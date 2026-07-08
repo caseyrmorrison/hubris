@@ -790,12 +790,17 @@ describe('twin bosses & legendaries (20-chamber run)', () => {
     const { g, input } = createHeadlessGame();
     g.startRun();
     g.phase = 'cleared';
+    g.weapons = [];  // isolate: only the storm may damage the target
     g.enemies = [];
-    g.boons = [{ id: 'l_zeus', rarity: 'epic' }, { id: 'l_ares', rarity: 'epic' }];
+    g.boons = [{ id: 'l_ares', rarity: 'epic' }]; // frenzy-no-decay; storm added below
     g.recomputeStats();
-    const e = g.spawnEnemyAt({ x: g.player.x + 300, y: g.player.y }, false, 'brute');
+    g.stats.critChance = 0; // a crit could one-shot before a second bolt
+    const e = g.spawnEnemyAt({ x: g.player.x + 200, y: g.player.y }, false, 'brute');
     e.spawnT = 0;
-    stepFrames(g, input, 90); // storm lord should bolt it unaided
+    e.speed = 0;
+    stepFrames(g, input, 3);   // warm the spatial hash with the target present
+    g.mods.stormLord = true;   // now the living storm awakens
+    stepFrames(g, input, 30);  // its first bolt lands
     expect(e.hp).toBeLessThan(e.maxHP);
     // Rage Incarnate: stacks hold with no kills for many seconds
     g.enemies = []; // nothing left to kill (a kill would add a stack)
@@ -861,11 +866,11 @@ describe('clear-the-map progression', () => {
   });
 });
 
-describe('massacre bonus & baseline lightning', () => {
-  it('kills build a fading XP multiplier that resets out of combat', () => {
+describe('massacre bonus & storm lightning', () => {
+  it('kills build a modest fading XP multiplier that resets out of combat', () => {
     const { g, input } = createHeadlessGame();
     g.startRun();
-    g.phase = 'cleared'; // freeze spawns/thunder; drive kills manually
+    g.phase = 'cleared'; // drive kills manually
     g.enemies = [];
     expect(g.massacreMult()).toBe(1); // no chain yet
     // Chain up 20 kills
@@ -875,12 +880,12 @@ describe('massacre bonus & baseline lightning', () => {
       g.dealDamage(e, 1e9, { source: 'strike' });
     }
     expect(g.massacreCount).toBe(20);
-    expect(g.massacreMult()).toBeCloseTo(1.4); // +2% * 20
+    expect(g.massacreMult()).toBeCloseTo(1.14); // +0.7% * 20
     // XP is boosted by the live multiplier (raise the bar so no level-up eats it)
     g.xpNeeded = 1e9;
     const before = g.xp;
     g.gainXP(100);
-    expect(g.xp - before).toBeCloseTo(100 * 1.4);
+    expect(g.xp - before).toBeCloseTo(100 * 1.14);
     // Let the window lapse -> chain resets (needs phase 'combat' to tick)
     g.phase = 'combat';
     g.enemies = [];
@@ -889,32 +894,41 @@ describe('massacre bonus & baseline lightning', () => {
     expect(g.massacreMult()).toBe(1);
   });
 
-  it('the XP multiplier is capped', () => {
+  it('the XP multiplier is capped low', () => {
     const { g } = createHeadlessGame();
     g.startRun();
     g.massacreCount = 100000;
-    expect(g.massacreMult()).toBeCloseTo(2.5); // 1 + capped 1.5
+    expect(g.massacreMult()).toBeCloseTo(1.4); // 1 + capped 0.4
   });
 
-  it('a baseline thunderbolt strikes on its cadence with no boons', () => {
+  it('storm lightning comes ONLY from a boon/obelisk, on a 10s cadence', () => {
     const { g, input } = createHeadlessGame();
     g.startRun();
     g.boons = [];
     g.recomputeStats();
     g.setupChamber(2);
-    // Park a lone foe with no weapons/attacks in play — only thunder can hit it
+    // A lone, immobile foe out of weapon range — only the storm can reach it
     g.weapons = [];
     g.enemies = [];
-    g.spawnBudgetUsed = g.quota; // stop the ambient spawner
-    const e = g.spawnEnemyAt({ x: g.player.x + 500, y: g.player.y }, false, 'brute');
+    g.spawnBudgetUsed = g.quota;
+    g.stats.critChance = 0; // a crit could one-shot before the second bolt
+    const e = g.spawnEnemyAt({ x: g.player.x + 600, y: g.player.y }, false, 'brute');
     e.spawnT = 0;
-    e.speed = 0; // hold it out at range so nothing but the bolt reaches it
+    e.speed = 0;
     const hp0 = e.hp;
-    // Just under the interval: nothing yet
-    stepFrames(g, input, Math.round(9 * 60));
+    // No storm source: no ambient lightning at all (also warms the hash)
+    stepFrames(g, input, 12 * 60);
     expect(e.hp).toBe(hp0);
-    // Past the interval: it gets zapped
-    stepFrames(g, input, Math.round(2 * 60));
-    expect(e.hp).toBeLessThan(hp0);
+    // Grant Storm Lord -> immediate first bolt, then ~every 10s
+    g.mods.stormLord = true;
+    stepFrames(g, input, 6); // stormT was 0 -> fires almost at once
+    const afterFirst = e.hp;
+    expect(afterFirst).toBeLessThan(hp0);
+    // Within the next 5s, NO second bolt (proves cadence >> 0.7s)
+    stepFrames(g, input, 5 * 60);
+    expect(e.hp).toBe(afterFirst);
+    // Past the 10s mark, the next bolt lands
+    stepFrames(g, input, 6 * 60);
+    expect(e.hp).toBeLessThan(afterFirst);
   });
 });

@@ -12,7 +12,7 @@ import { choice, fmt, rand, randInt, TAU, weightedPick } from '../engine/math';
 import {
   BOON_DEFS, BOSSES, CHAMBER_COUNT, CHAOS_MODS, CHARACTERS, ENEMY_DEFS,
   FATE_COLOR, MANA_SHIELD, MASSACRE_MAX, MASSACRE_PER_KILL, MASSACRE_WINDOW,
-  THUNDER_DAMAGE, THUNDER_INTERVAL, TOME_DEFS, TOME_MAX_LEVEL, TOWER_DEFS,
+  STORM_DAMAGE, STORM_INTERVAL, TOME_DEFS, TOME_MAX_LEVEL, TOWER_DEFS,
   WEAPON_DEFS, WEAPON_MAX_LEVEL, LEGENDARY_COLOR, biomeIndex, boonDef, bossHPFor,
   chamberQuota, characterDef, enemyDmgScale, enemyHPScale, isBossChamber,
   isTwinBossChamber, rollRarity, skinUnlocked, towerDef, weaponDef,
@@ -173,8 +173,7 @@ export class Game {
   buffs: ActiveBuff[] = [];
   chaosMods: ChaosModTotals = emptyChaosMods();
   fates: TakenFate[] = [];
-  private stormT = 0;
-  private thunderT = THUNDER_INTERVAL; // baseline periodic lightning strike
+  private stormT = 0; // countdown for the storm boon/obelisk lightning
 
   player: PlayerState = this.freshPlayer();
   stats: Stats = this.baseStats();
@@ -512,7 +511,6 @@ export class Game {
     this.frenzyStacks = 0;
     this.massacreCount = 0;
     this.massacreT = 0;
-    this.thunderT = THUNDER_INTERVAL;
     this.player = this.freshPlayer();
     this.recomputeStats();
     this.player.hp = this.stats.maxHP;
@@ -559,7 +557,6 @@ export class Game {
     this.spawnBudgetUsed = 0;
     this.massacreCount = 0;
     this.massacreT = 0;
-    this.thunderT = THUNDER_INTERVAL;
     this.quota = Math.round(chamberQuota(c) * (1 + 0.4 * this.heat('quota')));
     this.enemies = [];
     this.projectiles = [];
@@ -1734,28 +1731,6 @@ export class Game {
       if (this.massacreT <= 0) this.massacreCount = 0;
     }
 
-    // Baseline lightning: an automatic thunder strike on a fixed cadence,
-    // targeting the nearest foe (a boss if it's the only thing standing).
-    if (this.phase === 'combat') {
-      this.thunderT -= dt;
-      if (this.thunderT <= 0) {
-        const px = this.player.x, py = this.player.y;
-        let target: Enemy | null = null;
-        let bestD2 = Infinity;
-        for (const e of this.enemies) {
-          if (e.hp <= 0 || e.spawnT > 0) continue;
-          const d2 = (e.x - px) ** 2 + (e.y - py) ** 2;
-          if (d2 < bestD2) { bestD2 = d2; target = e; }
-        }
-        if (target) {
-          this.thunderT = THUNDER_INTERVAL;
-          this.boltStrike(target.x, target.y, THUNDER_DAMAGE);
-        } else {
-          this.thunderT = 0.5; // nothing to hit yet — check back soon
-        }
-      }
-    }
-
     // Obelisk buffs tick down; regen and storms act while live
     for (let i = this.buffs.length - 1; i >= 0; i--) {
       this.buffs[i].t -= dt;
@@ -1776,11 +1751,11 @@ export class Game {
     if (this.buffBonus('storm') > 0 || this.mods.stormLord) {
       this.stormT -= dt;
       if (this.stormT <= 0) {
-        this.stormT = 0.7;
+        this.stormT = STORM_INTERVAL;
         const targets = this.enemies.filter((e) => e.hp > 0 && e.spawnT <= 0);
         if (targets.length > 0) {
           const e = choice(targets);
-          this.boltStrike(e.x, e.y, 40);
+          this.boltStrike(e.x, e.y, STORM_DAMAGE);
         }
       }
     }

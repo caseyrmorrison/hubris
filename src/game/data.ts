@@ -458,7 +458,7 @@ export const BOON_DEFS: BoonDef[] = [
   // --- LEGENDARIES (guaranteed boss rewards; one per god) ---
   {
     id: 'l_zeus', god: 'zeus', legendary: true, name: "Skyfather's Wrath",
-    describe: () => `A living storm follows you: lightning strikes a nearby foe every moment.`,
+    describe: () => `A living storm follows you: a heavy lightning bolt smites a foe every 10s.`,
     apply: (s, mo) => { mo.stormLord = true; },
   },
   {
@@ -691,7 +691,7 @@ export const TOWER_DEFS: TowerDef[] = [
   { kind: 'wrath', name: 'Obelisk of Wrath', color: '#ff5a5a', glyph: '⚔',
     desc: '+35% damage for 45s', weight: 20 },
   { kind: 'storm', name: 'Obelisk of Storms', color: '#8fdcff', glyph: 'ϟ',
-    desc: 'lightning storms rage for 30s', weight: 18 },
+    desc: 'lightning smites a foe every 10s for 30s', weight: 18 },
   { kind: 'haste', name: 'Obelisk of Haste', color: '#f4f1ea', glyph: '↯',
     desc: '+30% attack & +20% move speed for 30s', weight: 18 },
   { kind: 'greed', name: 'Obelisk of Greed', color: '#f0c75e', glyph: '◈',
@@ -774,18 +774,19 @@ export function xpForLevel(level: number): number {
 
 export const CHAMBER_COUNT = 20; // the run: 20 chambers; escape at the final twins
 
-// --------------------------- Baseline lightning ---------------------------
-// Every character gets an automatic thunder strike on this cadence from the
-// very start. Tune the interval/damage here.
-export const THUNDER_INTERVAL = 10;  // seconds between baseline strikes
-export const THUNDER_DAMAGE = 45;    // base damage (runs through damage brackets)
+// ----------------------------- Storm lightning ----------------------------
+// The periodic sky-bolt from the Storm Lord boon and the Obelisk of Storms.
+// It is NOT a baseline attack — you only get it from those sources.
+export const STORM_INTERVAL = 10;   // seconds between storm strikes
+export const STORM_DAMAGE = 120;    // per-bolt base (runs through damage brackets)
 
 // ------------------------------- Massacre ---------------------------------
 // Diablo-style kill chain: each kill refreshes a short window; the more you
 // stack, the bigger the XP multiplier. Let it lapse and the chain resets.
+// Deliberately modest — a small edge over base leveling, not a runaway.
 export const MASSACRE_WINDOW = 2.2;  // seconds a kill keeps the chain alive
-export const MASSACRE_PER_KILL = 0.02; // +2% XP per chained kill...
-export const MASSACRE_MAX = 1.5;     // ...capped at +150% XP (2.5x total)
+export const MASSACRE_PER_KILL = 0.007; // +0.7% XP per chained kill...
+export const MASSACRE_MAX = 0.4;     // ...capped at +40% XP (1.4x total)
 
 /** Escalating flavor labels by chain size. */
 export function massacreTier(count: number): { label: string; color: string } | null {
