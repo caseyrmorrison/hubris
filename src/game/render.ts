@@ -633,7 +633,26 @@ function drawEnemies(g: Game, ctx: CanvasRenderingContext2D): void {
     }
 
     if (e.kind === 'boss') {
-      if (e.bossState!.variant === 'gatekeeper') {
+      if (e.bossState!.variant === 'sovereign') {
+        // The Archon: a full crown of spikes + a pulsing wrathful aura
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        drawGlow(ctx, color, sx, sy, r * 2.2, 0.35 + Math.sin(e.wobble * 3) * 0.12);
+        ctx.restore();
+        ctx.fillStyle = color;
+        for (let i = 0; i < 9; i++) {
+          const a = (i / 9) * TAU + e.wobble * 0.3;
+          const bx = sx + Math.cos(a) * (r + 6);
+          const by = sy + Math.sin(a) * (r + 6);
+          polygonPath(ctx, bx, by, 3, 10, a + Math.PI / 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = withAlpha('#ffd7de', 0.8);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 16, e.wobble, e.wobble + TAU * 0.8);
+        ctx.stroke();
+      } else if (e.bossState!.variant === 'gatekeeper') {
         // Crown spikes
         ctx.fillStyle = color;
         for (let i = 0; i < 5; i++) {
@@ -1228,22 +1247,25 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
     chipX += 58;
   }
 
-  // --- Chamber + quota / boss bars (top-center; twin fights stack two) ---
+  // --- Chamber + quota / boss bars (top-center; group fights stack up to 3) ---
   ctx.textAlign = 'center';
-  const bosses = g.enemies.filter((e) => e.bossState).slice(0, 2);
+  const bosses = g.enemies.filter((e) => e.bossState).slice(0, 3);
   if (bosses.length > 0) {
     const bw = Math.min(520, w - 320);
+    const compact = bosses.length >= 3;   // tighter rows when three gates stack
+    const rowH = compact ? 26 : 34;
     bosses.forEach((boss, i) => {
-      const y = 26 + i * 34;
-      ctx.font = `700 13px ${SERIF}`;
+      const y = 24 + i * rowH;
+      const barH = compact ? 9 : 12;
+      ctx.font = `700 ${compact ? 11 : 13}px ${SERIF}`;
       ctx.fillStyle = '#ffb3c8';
       ctx.fillText(BOSSES[boss.bossState!.variant].name, w / 2, y);
-      roundRect(ctx, w / 2 - bw / 2, y + 8, bw, 12, 4);
+      roundRect(ctx, w / 2 - bw / 2, y + 6, bw, barH, 4);
       ctx.fillStyle = 'rgba(8,10,20,0.75)';
       ctx.fill();
       const pct = clamp(boss.hp / boss.maxHP, 0, 1);
       if (pct > 0) {
-        roundRect(ctx, w / 2 - bw / 2 + 2, y + 10, (bw - 4) * pct, 8, 3);
+        roundRect(ctx, w / 2 - bw / 2 + 2, y + 8, (bw - 4) * pct, barH - 4, 3);
         ctx.fillStyle = BOSSES[boss.bossState!.variant].color;
         ctx.fill();
       }

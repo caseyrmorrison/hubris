@@ -178,8 +178,9 @@ rooms, keepsakes, NPC story beats.
   arena grown to 2000×1450 and kill quotas raised ~25% (16 + 9·c).
 - **The Long Descent (v0.7):** the run doubles to **20 chambers**. Boss
   cadence: herald (ch5, 0.55x HP) → **Twin Gates barrier** (ch10 — both bosses
-  at once, 0.6x each) → lone gate (ch15, 0.85x) → **Final Gates** (ch20 —
-  both bosses again at 0.9x each; the only fight that counts as the escape).
+  at once, 0.6x each) → lone gate (ch15, 0.85x) → **Final Gates** (ch20 — a
+  trio at 0.62x each; felling all three wakes THE ARCHON OF HUBRIS, a lone
+  1.6x-scaled final boss that is the only kill that wins the run).
   Twin fights show stacked HP bars; the chamber falls only when both die
   (first kill pays +5 ichor). Every conquered boss chamber bestows a
   guaranteed **LEGENDARY boon** (orange tier, no reroll, never in normal

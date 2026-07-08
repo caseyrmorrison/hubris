@@ -755,15 +755,27 @@ describe('twin bosses & legendaries (20-chamber run)', () => {
     expect(g.doors.length).toBeGreaterThan(0);
   });
 
-  it('chamber 20 hosts the final twins and only they grant the win', () => {
+  it('chamber 20 fields a trio, then the Archon, and only its death wins', () => {
     const { g } = createHeadlessGame();
     g.startRun();
     g.setupChamber(20);
-    const bosses = g.enemies.filter((e) => e.bossState);
-    expect(bosses.length).toBe(2);
-    g.dealDamage(bosses[0], 1e9, { source: 'strike' });
+    const trio = g.enemies.filter((e) => e.bossState);
+    expect(trio.length).toBe(3);                    // three gates at once
+    // Killing the trio does NOT win — it summons the Archon
+    g.dealDamage(trio[0], 1e9, { source: 'strike' });
     expect(g.save.wins).toBe(0);
     g.dealDamage(g.enemies.find((e) => e.bossState)!, 1e9, { source: 'strike' });
+    expect(g.save.wins).toBe(0);
+    g.dealDamage(g.enemies.find((e) => e.bossState)!, 1e9, { source: 'strike' });
+    // Trio down -> the Archon of Hubris awakens (still no win)
+    expect(g.save.wins).toBe(0);
+    const archon = g.enemies.find((e) => e.bossState);
+    expect(archon).toBeDefined();
+    expect(archon!.bossState!.variant).toBe('sovereign');
+    // The Archon is a towering solo pool, harder than a trio member
+    expect(archon!.maxHP).toBeGreaterThan(trio[0].maxHP);
+    // Slaying the Archon wins the run
+    g.dealDamage(archon!, 1e9, { source: 'strike' });
     expect(g.save.wins).toBe(1);
     expect(g.pendingVictoryT).toBeGreaterThan(0);
   });
@@ -886,9 +898,11 @@ describe('massacre bonus & storm lightning', () => {
     const before = g.xp;
     g.gainXP(100);
     expect(g.xp - before).toBeCloseTo(100 * 1.14);
-    // Let the window lapse -> chain resets (needs phase 'combat' to tick)
-    g.phase = 'combat';
+    // Let the window lapse -> chain resets. Silence all kill sources first
+    // (no weapons, no ambient spawns) so nothing refreshes the chain.
+    g.weapons = [];
     g.enemies = [];
+    g.spawnBudgetUsed = g.quota;
     stepFrames(g, input, Math.round(MASSACRE_WINDOW_S * 60) + 12);
     expect(g.massacreCount).toBe(0);
     expect(g.massacreMult()).toBe(1);

@@ -204,6 +204,7 @@ export class Game {
   private runEnded = false;
   private runCounted = false;
   private winCounted = false;
+  private sovereignSpawned = false; // chamber-20 finale: has the Archon awoken?
   private goldBonusBanked = 0;
   private killsBanked = 0;
   private dmgBanked = 0;
@@ -479,6 +480,7 @@ export class Game {
     this.runEnded = false;
     this.runCounted = false;
     this.winCounted = false;
+    this.sovereignSpawned = false;
     this.goldBonusBanked = 0;
     this.killsBanked = 0;
     this.dmgBanked = 0;
@@ -638,9 +640,16 @@ export class Game {
       this.phase = 'bossIntro';
       this.bannerT = 2.2;
       this.bannerColor = '#f0c75e';
-      if (isTwinBossChamber(c)) {
-        // Both gates open at once — the barrier and the finale
-        this.bannerText = c === CHAMBER_COUNT ? 'THE FINAL GATES' : 'THE TWIN GATES';
+      if (c === CHAMBER_COUNT) {
+        // The finale: three gates at once. Fell them all and the Archon wakes.
+        this.bannerText = 'THE FINAL GATES';
+        this.sovereignSpawned = false;
+        spawnBoss(this, 'gatekeeper', -360);
+        spawnBoss(this, 'shepherd', 0);
+        spawnBoss(this, choice(['gatekeeper', 'shepherd'] as const), 360);
+      } else if (isTwinBossChamber(c)) {
+        // Both gates open at once — the mid-run barrier
+        this.bannerText = 'THE TWIN GATES';
         spawnBoss(this, 'gatekeeper', -260);
         spawnBoss(this, 'shepherd', 260);
       } else {
@@ -1309,10 +1318,10 @@ export class Game {
         value: Math.max(1, Math.round(boss.gold / 6)), magnet: false, bob: rand(TAU),
       });
     }
-    // Twin fights: the chamber only falls when BOTH gates do
+    // Group fights: the chamber only advances when ALL current bosses fall
     if (this.enemies.some((e) => e.bossState)) {
       this.addIchor(5);
-      this.ui.showToast('One gate falls — one remains', '#ffb3c8');
+      this.ui.showToast('A gate falls — more remain', '#ffb3c8');
       return;
     }
     // Clear leftover summons
@@ -1321,10 +1330,29 @@ export class Game {
     }
     // Everything on the floor flies home while the dust settles
     for (const pk of this.pickups) pk.magnet = true;
+    // Chamber-20 finale, stage 1: the trio is down — the Archon awakens.
+    // This is NOT a win; the true final boss must still be slain.
+    if (this.chamber === CHAMBER_COUNT && !this.sovereignSpawned) {
+      this.sovereignSpawned = true;
+      this.addIchor(10);
+      spawnBoss(this, 'sovereign');
+      this.audio.play('bossRoar');
+      this.audio.setScene('boss', this.biome());
+      this.cam.shake(20);
+      this.bannerT = 2.8;
+      this.bannerColor = BOSSES.sovereign.color;
+      this.bannerText = `${BOSSES.sovereign.name} AWAKENS`;
+      // The gods grant one last legend before the final stand
+      if (this.genLegendaryChoices().length > 0) {
+        this.audio.play('unlock');
+        this.ui.openLegendary();
+      }
+      return;
+    }
     if (this.chamber === CHAMBER_COUNT) {
-      // The final twins: bank the win now; the victory prompt waits a couple
-      // of seconds so the loot is collected first.
-      this.addIchor(20);
+      // The Archon falls — the escape is won. Bank now; the victory prompt
+      // waits a couple of seconds so the loot is collected first.
+      this.addIchor(30);
       this.phase = 'over';
       this.bankMeta(true);
       this.pendingVictoryT = 2.5;

@@ -69,6 +69,11 @@ export const BOSSES: Record<BossVariant, BossDef> = {
     name: 'THE SHEPHERD OF SHADES', baseHP: 2050, radius: 44, speed: 82,
     touchDamage: 22, color: '#8b5cf6', xp: 40, gold: 60,
   },
+  // The true final boss — summoned when the chamber-20 trio all fall.
+  sovereign: {
+    name: 'THE ARCHON OF HUBRIS', baseHP: 3000, radius: 60, speed: 80,
+    touchDamage: 34, color: '#ff2d55', xp: 120, gold: 200,
+  },
 };
 
 /**
@@ -77,14 +82,16 @@ export const BOSSES: Record<BossVariant, BossDef> = {
  */
 export function bossHPFor(variant: BossVariant, power: number, chamber: number): number {
   const mult = Math.min(9, Math.max(2.2, 1 + power * 0.055));
+  // The Archon is the extremely-hard finale: a towering pool, all its own.
+  if (variant === 'sovereign') return Math.round(BOSSES.sovereign.baseHP * mult * 1.6);
   const endless = chamber > CHAMBER_COUNT ? 1 + (chamber - CHAMBER_COUNT) * 0.35 : 1;
-  // Stage factors: early heralds are light, twin fights split the pool,
-  // the chamber-15 gate stands alone and tall, the finale pairs two near-full.
+  // Stage factors: early heralds are light, group fights split the pool,
+  // the chamber-15 gate stands alone and tall, the finale fields a trio.
   const stage =
     chamber < 10 ? 0.55 :        // chamber 5 herald
     chamber === 10 ? 0.6 :       // twin barrier (×2 bosses)
     chamber < CHAMBER_COUNT ? 0.85 : // chamber 15 gate
-    chamber === CHAMBER_COUNT ? 0.9 : // final twins (×2 bosses)
+    chamber === CHAMBER_COUNT ? 0.62 : // final trio (×3 bosses)
     1;                           // endless singles (scaled by `endless`)
   return Math.round(BOSSES[variant].baseHP * mult * endless * stage);
 }

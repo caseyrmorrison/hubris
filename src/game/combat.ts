@@ -1013,8 +1013,9 @@ function updateBoss(g: Game, e: Enemy, dt: number): void {
     g.particles.burst(e.x, e.y, '#ff5a5a', 30, { speed: 300, size: 8, life: 0.7 });
   }
 
-  if (b.variant === 'gatekeeper') updateGatekeeper(g, e, dt);
-  else updateShepherd(g, e, dt);
+  // The Archon wields the Gatekeeper's aggressive kit — bursts, charges, adds.
+  if (b.variant === 'shepherd') updateShepherd(g, e, dt);
+  else updateGatekeeper(g, e, dt);
 
   e.x = clamp(e.x, -g.arenaHalfW + e.radius, g.arenaHalfW - e.radius);
   e.y = clamp(e.y, -g.arenaHalfH + e.radius, g.arenaHalfH - e.radius);

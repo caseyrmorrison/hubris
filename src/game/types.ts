@@ -127,7 +127,7 @@ export interface Enemy {
   bossState?: BossState;
 }
 
-export type BossVariant = 'gatekeeper' | 'shepherd';
+export type BossVariant = 'gatekeeper' | 'shepherd' | 'sovereign';
 
 export type BossMove =
   | 'idle' | 'burst' | 'chargePrep' | 'charging' | 'summon' | 'spiral'
