@@ -101,9 +101,10 @@ box. Menus and cards are tap-friendly and fit small/landscape screens.
    **burning**.
 7. The run is **20 chambers**. A **major boss guards every 5th**: a herald at
    chamber 5, **both bosses at once** at chamber 10 (the Twin Gates barrier),
-   a lone gate at 15, and the **Final Gates** at 20 — **three** bosses at once, and when
-   all three fall, **THE ARCHON OF HUBRIS** awakens: one towering final
-   boss you must slay to escape. Every conquered boss
+   a lone gate at 15, and the **Final Gates** at 20 — **three** bosses at once. Drop all three
+   to ≤10% health and **THE ARCHON OF HUBRIS** crashes down from the
+   ceiling, crushing them instantly and blasting you back — one towering
+   final boss you must slay to escape. Every conquered boss
    chamber bestows a guaranteed **Legendary boon** (unique god powers: a
    living storm, undying Bloodlust, divine dash celerity, King Tide waves).
    Win, then **descend deeper** — endless chambers with a boss every five —

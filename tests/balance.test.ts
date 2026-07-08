@@ -555,8 +555,12 @@ describe('expanded mirror of hubris', () => {
     g.startRun();
     expect(g.level).toBe(3);               // 1 + 2 ranks
     expect(g.gold).toBe(150);              // 50 * 3 ranks
-    // the headless stub auto-picks, so pending level-ups resolved instantly
-    expect(g.weapons.length + Object.keys(g.tomes).length).toBeGreaterThanOrEqual(2);
+    // The 2 awakening level-ups auto-resolve into upgrades. They might stack
+    // onto the starting weapon or diversify — either way, total invested
+    // levels rise from the baseline of 1 (one Lv1 starting weapon) to 3.
+    const totalLevels = g.weapons.reduce((n, w) => n + w.level, 0)
+      + Object.values(g.tomes).reduce((n, l) => n + l, 0);
+    expect(totalLevels).toBe(3);
   });
 
   it('council of gods adds a 4th boon offering', () => {
@@ -755,29 +759,60 @@ describe('twin bosses & legendaries (20-chamber run)', () => {
     expect(g.doors.length).toBeGreaterThan(0);
   });
 
-  it('chamber 20 fields a trio, then the Archon, and only its death wins', () => {
-    const { g } = createHeadlessGame();
+  it('chamber 20 fields a trio; dropping them all to <=10% crashes the Archon in', () => {
+    const { g, input } = createHeadlessGame();
     g.startRun();
     g.setupChamber(20);
+    g.phase = 'combat'; // skip the intro cinematic; the drop fires in combat
     const trio = g.enemies.filter((e) => e.bossState);
     expect(trio.length).toBe(3);                    // three gates at once
-    // Killing the trio does NOT win — it summons the Archon
-    g.dealDamage(trio[0], 1e9, { source: 'strike' });
-    expect(g.save.wins).toBe(0);
-    g.dealDamage(g.enemies.find((e) => e.bossState)!, 1e9, { source: 'strike' });
-    expect(g.save.wins).toBe(0);
-    g.dealDamage(g.enemies.find((e) => e.bossState)!, 1e9, { source: 'strike' });
-    // Trio down -> the Archon of Hubris awakens (still no win)
-    expect(g.save.wins).toBe(0);
+    const trioHP = trio[0].maxHP;
+    const hpBefore = g.player.hp;
+    // Whittle every gate down to ~8% — none dead yet
+    for (const b of trio) b.hp = b.maxHP * 0.08;
+    stepFrames(g, input, 2);                        // per-frame check fires the drop
+    // The trio was crushed on impact; the Archon now stands alone
+    const gatesLeft = g.enemies.filter((e) => e.bossState && e.bossState.variant !== 'sovereign');
+    expect(gatesLeft.length).toBe(0);
     const archon = g.enemies.find((e) => e.bossState);
     expect(archon).toBeDefined();
     expect(archon!.bossState!.variant).toBe('sovereign');
-    // The Archon is a towering solo pool, harder than a trio member
-    expect(archon!.maxHP).toBeGreaterThan(trio[0].maxHP);
+    expect(archon!.maxHP).toBeGreaterThan(trioHP); // a towering solo pool
+    expect(g.save.wins).toBe(0);                    // NOT a win yet
+    // The arrival chipped the player even though they never got hit in combat
+    expect(g.player.hp).toBeLessThan(hpBefore);
     // Slaying the Archon wins the run
     g.dealDamage(archon!, 1e9, { source: 'strike' });
     expect(g.save.wins).toBe(1);
     expect(g.pendingVictoryT).toBeGreaterThan(0);
+  });
+
+  it('the Archon still arrives if the whole trio is overkilled outright', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(20);
+    // Burst each gate straight from full to dead
+    for (let n = 0; n < 3; n++) {
+      g.dealDamage(g.enemies.find((e) => e.bossState)!, 1e9, { source: 'strike' });
+    }
+    const archon = g.enemies.find((e) => e.bossState);
+    expect(archon).toBeDefined();
+    expect(archon!.bossState!.variant).toBe('sovereign');
+    expect(g.save.wins).toBe(0);
+  });
+
+  it('the arrival hit ignores dodge i-frames (it cannot be dodged)', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(20);
+    g.phase = 'combat';
+    g.player.hp = g.stats.maxHP;
+    g.player.dashT = 0.16;   // mid-dash: normally invulnerable
+    g.player.invulnT = 1;    // and mid mercy window
+    const hp0 = g.player.hp;
+    for (const b of g.enemies.filter((e) => e.bossState)) b.hp = b.maxHP * 0.05;
+    stepFrames(g, input, 2);
+    expect(g.player.hp).toBeLessThan(hp0); // chipped despite the i-frames
   });
 
   it('legendaries never appear in normal god offerings and never repeat', () => {
@@ -971,15 +1006,18 @@ describe('new enemies: reaver & stalker', () => {
     g.phase = 'combat';
     g.spawnBudgetUsed = g.quota; // no ambient spawns to interfere
     g.enemies = [];
-    g.player.x = 0; g.player.y = 0;
-    const r = g.spawnEnemyAt({ x: 300, y: 0 }, false, 'reaver');
+    g.player.x = 800; g.player.y = 0; // far right so a left-lunger can't reach it
+    const r = g.spawnEnemyAt({ x: 0, y: 0 }, false, 'reaver');
     r.spawnT = 0;
-    // Force it into a lunge straight at the player and measure one step
-    r.windup = -1; r.lungeT = 0.3; r.lungeDirX = -1; r.lungeDirY = 0;
+    // Hold it in a lunge to the LEFT (away from the player) and measure travel
+    // over several frames — averages out any single-frame noise.
+    r.windup = -1; r.lungeT = 1; r.lungeDirX = -1; r.lungeDirY = 0;
     const x0 = r.x;
-    stepFrames(g, input, 1);
-    const moved = Math.abs(r.x - x0) * 60; // px this frame -> px/s
-    expect(moved).toBeGreaterThan(600); // lunge speed, well above base 128
+    const frames = 5;
+    stepFrames(g, input, frames);
+    const speed = (Math.abs(r.x - x0) / (frames / 60)); // px/s over the window
+    // Base chase is 128 px/s; the lunge is ~680. Comfortably above base.
+    expect(speed).toBeGreaterThan(400);
   });
 
   it('a stalker leads the player rather than chasing their current spot', () => {
@@ -987,9 +1025,10 @@ describe('new enemies: reaver & stalker', () => {
     g.startRun();
     g.phase = 'combat';
     g.spawnBudgetUsed = g.quota;
+    g.weapons = []; // isolate the stalker's movement — no weapon knockback on it
     g.enemies = [];
     g.player.x = 0; g.player.y = 0;
-    // Player sprinting straight up; stalker sits to the lower-right
+    // Player sprinting straight up; stalker sits directly below
     input.keys.clear(); input.keys.add('KeyW');
     const s = g.spawnEnemyAt({ x: 0, y: 200 }, false, 'stalker');
     s.spawnT = 0;

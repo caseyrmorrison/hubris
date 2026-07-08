@@ -8,7 +8,7 @@ import { Camera } from '../engine/camera';
 import type { AudioSys } from '../engine/audio';
 import { Particles } from '../engine/particles';
 import { SpatialHash } from '../engine/spatial';
-import { choice, fmt, rand, randInt, TAU, weightedPick } from '../engine/math';
+import { choice, clamp, fmt, rand, randInt, TAU, weightedPick } from '../engine/math';
 import {
   BOON_DEFS, BOSSES, CHAMBER_COUNT, CHAOS_MODS, CHARACTERS, ENEMY_DEFS,
   FATE_COLOR, MANA_SHIELD, MASSACRE_MAX, MASSACRE_PER_KILL, MASSACRE_WINDOW,
@@ -988,9 +988,12 @@ export class Game {
     }
   }
 
-  hurtPlayer(dmg: number, fromX?: number, fromY?: number): void {
+  hurtPlayer(dmg: number, fromX?: number, fromY?: number, ignoreGuard = false): void {
     const p = this.player;
-    if (p.invulnT > 0 || p.dashT > 0 || this.phase === 'over' || this.deathT > 0) return;
+    if (this.phase === 'over' || this.deathT > 0) return;
+    // Most hits respect dodge i-frames and mercy; unavoidable events (the
+    // Archon's arrival) pass ignoreGuard to bypass them.
+    if (!ignoreGuard && (p.invulnT > 0 || p.dashT > 0)) return;
     dmg *= 1 + this.chaosMods.damageTaken; // Blood Price and its kin
     // Armor (Thick Skin + Tome of the Turtle): flat reduction, min 1
     if (this.stats.armor > 0) dmg = Math.max(1, dmg - this.stats.armor);
@@ -1302,6 +1305,70 @@ export class Game {
   // Boss defeat, victory & endless
   // ------------------------------------------------------------------
 
+  /**
+   * Chamber-20 finale spectacle: once every surviving gate is at ≤10% HP (or
+   * they're all already dead from overkill), the Archon of Hubris crashes down
+   * from the ceiling — crushing the trio instantly, shoving the player back
+   * with an unavoidable chip of damage, and opening the true final fight.
+   */
+  archonDrop(): void {
+    if (this.sovereignSpawned) return;
+    this.sovereignSpawned = true;
+    const survivors = this.enemies.filter((e) => e.bossState);
+    // Impact point: the middle of the doomed gates (or the player if none left)
+    let dx = 0, dy = 0;
+    if (survivors.length > 0) {
+      for (const b of survivors) { dx += b.x; dy += b.y; }
+      dx /= survivors.length; dy /= survivors.length;
+    } else {
+      dx = this.player.x; dy = this.player.y - 140;
+    }
+    // Crush the gates — they die where they stand, still spilling their loot
+    for (const b of survivors) {
+      this.particles.burst(b.x, b.y, '#ff2d55', 30, { speed: 320, size: 7, life: 0.7 });
+      this.dropXP(b.x, b.y, 24);
+      this.pickups.push({
+        kind: 'gold', x: b.x, y: b.y, vx: rand(-120, 120), vy: rand(-160, -40),
+        value: Math.max(1, Math.round(b.gold / 2)), magnet: false, bob: rand(TAU),
+      });
+    }
+    this.enemies = this.enemies.filter((e) => !e.bossState);
+    for (const pk of this.pickups) pk.magnet = true;
+
+    // The slam
+    this.hitStop = Math.max(this.hitStop, 0.22);
+    this.cam.shake(26);
+    this.audio.play('bossRoar');
+    this.audio.setScene('boss', this.biome());
+    this.shockwaves.push({ x: dx, y: dy, r: 24, maxR: 680, life: 0.9, color: BOSSES.sovereign.color });
+    this.particles.burst(dx, dy, BOSSES.sovereign.color, 70, { speed: 420, size: 9, life: 1 });
+
+    // Unavoidable arrival: shove the player clear and chip them, even if they
+    // were standing right under it.
+    const p = this.player;
+    let pdx = p.x - dx, pdy = p.y - dy;
+    let pd = Math.hypot(pdx, pdy);
+    if (pd < 1) { pdx = 0; pdy = 1; pd = 1; } // directly beneath — hurl downward
+    p.x = clamp(p.x + (pdx / pd) * 90, -this.arenaHalfW + 15, this.arenaHalfW - 15);
+    p.y = clamp(p.y + (pdy / pd) * 90, -this.arenaHalfH + 15, this.arenaHalfH - 15);
+    this.hurtPlayer(Math.max(10, Math.round(this.stats.maxHP * 0.12)), dx, dy, true);
+
+    // The Archon lands where it struck
+    spawnBoss(this, 'sovereign');
+    const archon = this.enemies[this.enemies.length - 1];
+    if (archon) { archon.x = dx; archon.y = dy; }
+    this.addIchor(10);
+    this.bannerT = 2.8;
+    this.bannerColor = BOSSES.sovereign.color;
+    this.bannerText = `${BOSSES.sovereign.name} DESCENDS`;
+
+    // One last legend before the final stand
+    if (this.genLegendaryChoices().length > 0) {
+      this.audio.play('unlock');
+      this.ui.openLegendary();
+    }
+  }
+
   bossDefeated(boss: Enemy): void {
     this.enemies = this.enemies.filter((e) => e !== boss);
     this.hitStop = 0.35;
@@ -1330,23 +1397,11 @@ export class Game {
     }
     // Everything on the floor flies home while the dust settles
     for (const pk of this.pickups) pk.magnet = true;
-    // Chamber-20 finale, stage 1: the trio is down — the Archon awakens.
+    // Chamber-20 finale, stage 1: the last gate was overkilled outright
+    // (before the ≤10% drop could trigger) — bring the Archon down now.
     // This is NOT a win; the true final boss must still be slain.
     if (this.chamber === CHAMBER_COUNT && !this.sovereignSpawned) {
-      this.sovereignSpawned = true;
-      this.addIchor(10);
-      spawnBoss(this, 'sovereign');
-      this.audio.play('bossRoar');
-      this.audio.setScene('boss', this.biome());
-      this.cam.shake(20);
-      this.bannerT = 2.8;
-      this.bannerColor = BOSSES.sovereign.color;
-      this.bannerText = `${BOSSES.sovereign.name} AWAKENS`;
-      // The gods grant one last legend before the final stand
-      if (this.genLegendaryChoices().length > 0) {
-        this.audio.play('unlock');
-        this.ui.openLegendary();
-      }
+      this.archonDrop();
       return;
     }
     if (this.chamber === CHAMBER_COUNT) {
@@ -1808,6 +1863,16 @@ export class Game {
     }
 
     updateCombat(this, dt);
+
+    // Chamber-20 finale: the moment every surviving gate is at ≤10% HP, the
+    // Archon crashes down and crushes them.
+    if (this.chamber === CHAMBER_COUNT && this.phase === 'combat' && !this.sovereignSpawned) {
+      const gates = this.enemies.filter((e) => e.bossState);
+      if (gates.length > 0 && gates.every((b) => b.hp <= b.maxHP * 0.10)) {
+        this.archonDrop();
+      }
+    }
+
     this.cam.follow(this.player.x, this.player.y, dt);
     this.cam.clampTo(this.arenaHalfW, this.arenaHalfH);
     this.cam.update(dt);
