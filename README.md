@@ -68,11 +68,13 @@ box. Menus and cards are tap-friendly and fit small/landscape screens.
    every 3rd shot, +50% pickup radius), and **The Oracle** (exploding
    spell-orbs with a surge every 3rd cast, plus a regenerating **mana
    shield** that soaks damage before HP).
-1. Each chamber continuously spawns a horde — fill the **kill quota**. Melee
+1. Each chamber pours in a finite horde — **slay every foe on the map** to
+   open the doors (summons and splitters included). Melee
    strikes are a **3-hit combo** (the finisher hits harder); brutes telegraph
    their charges, ranged foes flash before firing.
-   **Obelisks** (Megabonk-style shrines) spawn from chamber 2: stand in the
-   ring to channel a capture while a defense wave contests you — rewards range
+   **Obelisks** (Megabonk-style shrines) spawn from chamber 2: capture them
+   **during** the fight — a defense wave contests you, and unclaimed obelisks
+   crumble when the chamber clears. Rewards range
    from timed damage/haste/gold surges to lightning storms, heals, and
    soul-bursts. Edge-of-screen arrows point the way. **Chests** also hide
    around the arena — free ones grant an upgrade; gilded ones cost gold and

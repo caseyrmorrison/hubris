@@ -539,7 +539,7 @@ export interface HeatDef {
 export const HEAT_DEFS: HeatDef[] = [
   { id: 'foes', name: 'Hardened Foes', desc: '+30% enemy health per rank', maxLevel: 2 },
   { id: 'swift', name: 'Swift Doom', desc: '+15% enemy speed', maxLevel: 1 },
-  { id: 'quota', name: 'Tight Quota', desc: '+40% kill quotas', maxLevel: 1 },
+  { id: 'quota', name: 'Tight Quota', desc: '+40% enemies per chamber', maxLevel: 1 },
   { id: 'frail', name: 'Frail Vessel', desc: '−25 max HP', maxLevel: 1 },
   { id: 'stingy', name: 'Stingy Fates', desc: 'One fewer door per chamber', maxLevel: 1 },
 ];

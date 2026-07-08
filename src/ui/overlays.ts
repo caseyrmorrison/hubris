@@ -244,8 +244,8 @@ export class UIManager {
         <div><b>ESC</b></div><div>pause</div>
       `),
       el('p', 'howto-text', `
-        Fill each chamber's <span class="hl-purple">kill quota</span>, then walk into a door — doors show their reward.
-        Glowing <span class="hl-gold">obelisks</span> can be captured: stand in the ring to channel (a wave will contest you) for powerful timed buffs.
+        Slay <span class="hl-purple">every foe</span> in the chamber, then walk into a door — doors show their reward.
+        Glowing <span class="hl-gold">obelisks</span> can be captured mid-fight: stand in the ring to channel (a wave will contest you) for powerful timed buffs — unclaimed obelisks crumble when the chamber clears.
         Collect <span class="hl-cyan">XP gems</span> to level up and stack <b>auto-weapons</b> and <b>tomes</b>.
         Doors marked <span class="hl-gold">Z / A / H</span> grant god boons with rarities; two gods' boons can unlock <span class="hl-gold">Duo boons</span>,
         and <span class="hl-gold">Poms</span> raise a boon's rarity. Spend gold at <span class="hl-purple">Charon's Wares</span>.

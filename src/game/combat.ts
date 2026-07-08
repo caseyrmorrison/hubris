@@ -341,7 +341,7 @@ function doStrike(g: Game): void {
 // ---------------------------------------------------------------------------
 
 function updateTowers(g: Game, dt: number): void {
-  if (g.phase !== 'combat' && g.phase !== 'cleared') return;
+  if (g.phase !== 'combat') return; // no safe captures after the fight
   const p = g.player;
   for (const t of g.towers) {
     t.phase += dt;
@@ -707,17 +707,19 @@ function makeProj(
 
 function updateSpawns(g: Game, dt: number): void {
   if (g.phase !== 'combat' || isBossChamber(g.chamber)) return;
+  // Finite population: once the chamber's budget is spent, no more spawns —
+  // the survivors are all that stand between you and the doors.
+  if (g.spawnBudgetUsed >= g.quota) return;
   g.spawnAccum += dt;
   if (g.spawnAccum < 0.4) return;
   g.spawnAccum = 0;
   const alive = g.enemies.length;
-  // Don't spawn far past what's needed to finish the quota
-  if (g.killsInChamber + alive >= g.quota + 30) return;
   const target = aliveTarget(g.chamber, g.chamberT);
   const deficit = Math.floor(target - alive);
-  const batch = Math.min(deficit, 6);
+  const batch = Math.min(deficit, 6, g.quota - g.spawnBudgetUsed);
   for (let i = 0; i < batch; i++) {
     g.spawnEnemyAt(g.perimeterPoint());
+    g.spawnBudgetUsed++;
   }
 }
 

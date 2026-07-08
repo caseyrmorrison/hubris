@@ -146,7 +146,8 @@ export class Game {
 
   // run state
   chamber = 1;
-  quota = 0;
+  quota = 0;              // total foes the chamber will pour in
+  spawnBudgetUsed = 0;    // how many the ambient spawner has released
   killsInChamber = 0;
   chamberT = 0;
   runT = 0;
@@ -155,6 +156,7 @@ export class Game {
   private chamberSwitched = false;
   bannerT = 0;
   bannerText = '';
+  bannerColor = '#f0c75e';
   endless = false;
   pendingVictoryT = 0;    // sim-time delay before the victory screen
   pendingClearT = 0;      // herald bosses: loot-vacuum breather before doors
@@ -381,6 +383,12 @@ export class Game {
     this.particles.burst(t.x, t.y, def.color, 28, { speed: 300, size: 7, life: 0.7 });
     this.audio.play('boon');
     this.cam.shake(6);
+    // Spell out exactly what was gained, big and in the obelisk's color
+    if (t.kind !== 'chaos') {
+      this.bannerT = 2.2;
+      this.bannerColor = def.color;
+      this.bannerText = def.desc.toUpperCase();
+    }
     this.ui.showToast(`${def.name.toUpperCase()} — ${def.desc}`, def.color);
     switch (t.kind) {
       case 'wrath':
@@ -429,6 +437,7 @@ export class Game {
     this.recomputeStats();
     this.player.hp = Math.min(this.player.hp, this.stats.maxHP);
     this.bannerT = 1.8;
+    this.bannerColor = FATE_COLOR[def.polarity];
     this.bannerText = `FATE — ${def.name.toUpperCase()}`;
     this.ui.showToast(`${def.name}: ${def.desc}`, FATE_COLOR[def.polarity]);
     this.audio.play(def.polarity === 'bane' ? 'hurt' : 'boon');
@@ -539,6 +548,7 @@ export class Game {
     this.chamberT = 0;
     this.pendingClearT = 0;
     this.killsInChamber = 0;
+    this.spawnBudgetUsed = 0;
     this.quota = Math.round(chamberQuota(c) * (1 + 0.4 * this.heat('quota')));
     this.enemies = [];
     this.projectiles = [];
@@ -619,6 +629,7 @@ export class Game {
     if (isBoss) {
       this.phase = 'bossIntro';
       this.bannerT = 2.2;
+      this.bannerColor = '#f0c75e';
       if (isTwinBossChamber(c)) {
         // Both gates open at once — the barrier and the finale
         this.bannerText = c === CHAMBER_COUNT ? 'THE FINAL GATES' : 'THE TWIN GATES';
@@ -635,6 +646,7 @@ export class Game {
     } else {
       this.phase = 'combat';
       this.bannerT = 1.6;
+      this.bannerColor = '#f0c75e';
       this.bannerText = this.endless && c > CHAMBER_COUNT
         ? `CHAMBER ${c} — THE DESCENT`
         : `CHAMBER ${roman(c)}`;
@@ -880,10 +892,19 @@ export class Game {
     if (this.mods.novaChance > 0 && Math.random() < this.mods.novaChance) {
       this.explodeNova(e.x, e.y);
     }
-    // Quota check
-    if (this.phase === 'combat' && !isBossChamber(this.chamber) && this.killsInChamber >= this.quota) {
+    // Clear check: the spawner has emptied its budget AND nothing lives —
+    // every foe on the map (including summons and splits) must fall.
+    if (this.phase === 'combat' && !isBossChamber(this.chamber)
+      && this.spawnBudgetUsed >= this.quota
+      && !this.enemies.some((o) => o.hp > 0 && !o.bossState)) {
       this.onQuotaMet();
     }
+  }
+
+  /** Foes still standing between you and the doors. */
+  remainingFoes(): number {
+    const alive = this.enemies.reduce((n, e) => n + (e.hp > 0 && !e.bossState ? 1 : 0), 0);
+    return Math.max(0, this.quota - this.spawnBudgetUsed) + alive;
   }
 
   explodeNova(x: number, y: number): void {
@@ -1010,19 +1031,21 @@ export class Game {
   onQuotaMet(): void {
     this.phase = 'cleared';
     this.audio.play('door');
-    // Dissolve stragglers (they still burst, no quota needed now)
-    for (const e of [...this.enemies]) {
-      if (e.hp > 0 && !e.bossState) {
-        e.hp = 0;
-        this.particles.burst(e.x, e.y, '#7d6bd9', 5, { speed: 120, size: 4, life: 0.4 });
-        this.dropXP(e.x, e.y, Math.max(1, Math.round(e.xp / 2)));
-      }
+    // Unclaimed obelisks crumble with the chamber — capture them in the
+    // fight or not at all.
+    const lost = this.towers.filter((t) => !t.captured);
+    for (const t of lost) {
+      this.particles.burst(t.x, t.y - 26, '#8a93b8', 14, { speed: 160, size: 5, life: 0.5 });
     }
-    this.enemies = this.enemies.filter((e) => e.bossState);
+    if (lost.length > 0) {
+      this.ui.showToast(`${lost.length === 1 ? 'An obelisk crumbles' : 'The obelisks crumble'} unclaimed`, '#8a93b8');
+    }
+    this.towers = this.towers.filter((t) => t.captured);
     // Vacuum every pickup
     for (const pk of this.pickups) pk.magnet = true;
     this.doors = this.rollDoors();
     this.bannerT = 1.4;
+    this.bannerColor = '#f0c75e';
     this.bannerText = 'CHAMBER CLEARED — CHOOSE A DOOR';
   }
 
@@ -1671,6 +1694,7 @@ export class Game {
         this.doors = this.rollDoors();
         this.audio.play('door');
         this.bannerT = 1.4;
+        this.bannerColor = '#f0c75e';
         this.bannerText = 'CHOOSE A DOOR';
       }
     }

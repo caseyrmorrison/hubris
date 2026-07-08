@@ -657,7 +657,9 @@ describe('poseidon & new content', () => {
     g.enemies = [];
     g.boons = [{ id: 'p_slow', rarity: 'epic' }];
     g.recomputeStats();
-    const e = g.spawnEnemyAt({ x: g.player.x + 180, y: g.player.y }, false, 'shade');
+    g.stats.critChance = 0; // a crit could one-shot a shade before chill lands
+    // A brute survives many arrows, so chill definitely gets observed.
+    const e = g.spawnEnemyAt({ x: g.player.x + 180, y: g.player.y }, false, 'brute');
     e.spawnT = 0;
     input.mouseDown = true;
     input.mouseX = g.cam.toScreenX(e.x);
@@ -801,5 +803,60 @@ describe('twin bosses & legendaries (20-chamber run)', () => {
     g.frenzyIdleT = 10;
     stepFrames(g, input, 120);
     expect(g.frenzyStacks).toBe(20);
+  });
+});
+
+describe('clear-the-map progression', () => {
+  it('the chamber clears only when the budget is spent AND nothing lives', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(2);
+    g.enemies = [];
+    g.spawnBudgetUsed = g.quota;    // spawner is done pouring
+    // Two stragglers (e.g. splitter children) still block the doors
+    const a = g.spawnEnemyAt({ x: 0, y: 0 }, false, 'shade');
+    const b = g.spawnEnemyAt({ x: 60, y: 0 }, false, 'shade');
+    a.spawnT = b.spawnT = 0;
+    g.dealDamage(a, 1e9, { source: 'strike' });
+    expect(g.phase).toBe('combat');  // one still stands
+    g.dealDamage(b, 1e9, { source: 'strike' });
+    expect(g.phase).toBe('cleared'); // map empty -> doors
+  });
+
+  it('the spawner never exceeds the chamber budget', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.quota = 8;
+    stepFrames(g, input, 600); // plenty of time to overspawn if it could
+    expect(g.spawnBudgetUsed).toBeLessThanOrEqual(8);
+  });
+
+  it('unclaimed obelisks crumble on clear; captured ones remain', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(3);
+    g.enemies = [];
+    g.spawnBudgetUsed = g.quota;
+    g.towers = [
+      { x: 0, y: 0, kind: 'wrath', progress: 0.5, captured: false, waveSpawned: true, phase: 0 },
+      { x: 300, y: 0, kind: 'haste', progress: 1, captured: true, waveSpawned: true, phase: 0 },
+    ];
+    const e = g.spawnEnemyAt({ x: -300, y: 0 }, false, 'shade');
+    e.spawnT = 0;
+    g.dealDamage(e, 1e9, { source: 'strike' });
+    expect(g.phase).toBe('cleared');
+    expect(g.towers.length).toBe(1);
+    expect(g.towers[0].captured).toBe(true);
+  });
+
+  it('towers cannot be channeled after the chamber clears', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(3);
+    g.phase = 'cleared';
+    g.towers = [{ x: g.player.x, y: g.player.y, kind: 'wrath', progress: 0, captured: false, waveSpawned: false, phase: 0 }];
+    stepFrames(g, input, 60); // standing right on it
+    expect(g.towers[0].progress).toBe(0);
+    expect(g.towers[0].captured).toBe(false);
   });
 });

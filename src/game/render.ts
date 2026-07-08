@@ -1120,7 +1120,7 @@ function drawBanner(g: Game, ctx: CanvasRenderingContext2D, w: number, h: number
   ctx.font = `700 34px ${SERIF}`;
   ctx.fillStyle = '#0a0d18';
   ctx.fillText(g.bannerText, w / 2 + 2, 142);
-  ctx.fillStyle = '#f0c75e';
+  ctx.fillStyle = g.bannerColor;
   ctx.fillText(g.bannerText, w / 2, 140);
   ctx.restore();
 }
@@ -1255,10 +1255,11 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
     ctx.fillText(label, w / 2, 24);
     if (g.phase === 'combat' && !g.doors.length && g.quota > 0) {
       const qw = 240;
+      const remaining = g.remainingFoes();
       roundRect(ctx, w / 2 - qw / 2, 36, qw, 10, 3);
       ctx.fillStyle = 'rgba(8,10,20,0.75)';
       ctx.fill();
-      const pct = clamp(g.killsInChamber / g.quota, 0, 1);
+      const pct = clamp(g.killsInChamber / Math.max(1, g.killsInChamber + remaining), 0, 1);
       if (pct > 0) {
         roundRect(ctx, w / 2 - qw / 2 + 2, 38, (qw - 4) * pct, 6, 2);
         ctx.fillStyle = '#c17bff';
@@ -1266,7 +1267,7 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
       }
       ctx.font = `600 11px ${SANS}`;
       ctx.fillStyle = 'rgba(201,210,240,0.85)';
-      ctx.fillText(`${g.killsInChamber} / ${g.quota}`, w / 2, 56);
+      ctx.fillText(`${remaining} FOE${remaining === 1 ? '' : 'S'} REMAIN`, w / 2, 56);
     } else if (g.phase === 'cleared') {
       ctx.font = `600 12px ${SANS}`;
       ctx.fillStyle = '#f0c75e';
