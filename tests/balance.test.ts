@@ -901,34 +901,35 @@ describe('massacre bonus & storm lightning', () => {
     expect(g.massacreMult()).toBeCloseTo(1.4); // 1 + capped 0.4
   });
 
-  it('storm lightning comes ONLY from a boon/obelisk, on a 10s cadence', () => {
+  it('storm lightning comes ONLY from a boon/obelisk, and crackles fast', () => {
     const { g, input } = createHeadlessGame();
     g.startRun();
     g.boons = [];
     g.recomputeStats();
     g.setupChamber(2);
-    // A lone, immobile foe out of weapon range — only the storm can reach it
+    // A crowd of immobile, out-of-weapon-range foes — only the storm reaches
     g.weapons = [];
     g.enemies = [];
     g.spawnBudgetUsed = g.quota;
-    g.stats.critChance = 0; // a crit could one-shot before the second bolt
-    const e = g.spawnEnemyAt({ x: g.player.x + 600, y: g.player.y }, false, 'brute');
-    e.spawnT = 0;
-    e.speed = 0;
-    const hp0 = e.hp;
+    g.stats.critChance = 0;
+    const foes = [];
+    for (let i = 0; i < 12; i++) {
+      const e = g.spawnEnemyAt({ x: g.player.x + 600, y: g.player.y - 200 + i * 36 }, false, 'brute');
+      e.spawnT = 0;
+      e.speed = 0;
+      foes.push(e);
+    }
+    const totalHp = () => foes.reduce((n, e) => n + Math.max(0, e.hp), 0);
+    const hp0 = totalHp();
     // No storm source: no ambient lightning at all (also warms the hash)
-    stepFrames(g, input, 12 * 60);
-    expect(e.hp).toBe(hp0);
-    // Grant Storm Lord -> immediate first bolt, then ~every 10s
-    g.mods.stormLord = true;
-    stepFrames(g, input, 6); // stormT was 0 -> fires almost at once
-    const afterFirst = e.hp;
-    expect(afterFirst).toBeLessThan(hp0);
-    // Within the next 5s, NO second bolt (proves cadence >> 0.7s)
     stepFrames(g, input, 5 * 60);
-    expect(e.hp).toBe(afterFirst);
-    // Past the 10s mark, the next bolt lands
-    stepFrames(g, input, 6 * 60);
-    expect(e.hp).toBeLessThan(afterFirst);
+    expect(totalHp()).toBe(hp0);
+    // Grant Storm Lord -> several bolts should land within a couple seconds
+    g.mods.stormLord = true;
+    stepFrames(g, input, 30);  // ~0.5s -> at least one bolt at 0.7s cadence
+    expect(totalHp()).toBeLessThan(hp0);
+    const afterHalfSec = totalHp();
+    stepFrames(g, input, 150); // ~2.5s more -> many more bolts (fast cadence)
+    expect(totalHp()).toBeLessThan(afterHalfSec);
   });
 });

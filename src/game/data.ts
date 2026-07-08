@@ -458,7 +458,7 @@ export const BOON_DEFS: BoonDef[] = [
   // --- LEGENDARIES (guaranteed boss rewards; one per god) ---
   {
     id: 'l_zeus', god: 'zeus', legendary: true, name: "Skyfather's Wrath",
-    describe: () => `A living storm follows you: a heavy lightning bolt smites a foe every 10s.`,
+    describe: () => `A living storm follows you: lightning strikes a nearby foe every moment.`,
     apply: (s, mo) => { mo.stormLord = true; },
   },
   {
@@ -691,7 +691,7 @@ export const TOWER_DEFS: TowerDef[] = [
   { kind: 'wrath', name: 'Obelisk of Wrath', color: '#ff5a5a', glyph: '⚔',
     desc: '+35% damage for 45s', weight: 20 },
   { kind: 'storm', name: 'Obelisk of Storms', color: '#8fdcff', glyph: 'ϟ',
-    desc: 'lightning smites a foe every 10s for 30s', weight: 18 },
+    desc: 'lightning storms rage for 30s', weight: 18 },
   { kind: 'haste', name: 'Obelisk of Haste', color: '#f4f1ea', glyph: '↯',
     desc: '+30% attack & +20% move speed for 30s', weight: 18 },
   { kind: 'greed', name: 'Obelisk of Greed', color: '#f0c75e', glyph: '◈',
@@ -775,10 +775,11 @@ export function xpForLevel(level: number): number {
 export const CHAMBER_COUNT = 20; // the run: 20 chambers; escape at the final twins
 
 // ----------------------------- Storm lightning ----------------------------
-// The periodic sky-bolt from the Storm Lord boon and the Obelisk of Storms.
-// It is NOT a baseline attack — you only get it from those sources.
-export const STORM_INTERVAL = 10;   // seconds between storm strikes
-export const STORM_DAMAGE = 120;    // per-bolt base (runs through damage brackets)
+// The rapid sky-bolt from the Storm Lord boon and the Obelisk of Storms.
+// It is NOT a baseline attack — you only get it from those sources. Fires
+// fast for an engaging, crackling event loop.
+export const STORM_INTERVAL = 0.7;  // seconds between storm strikes
+export const STORM_DAMAGE = 40;     // per-bolt base (runs through damage brackets)
 
 // ------------------------------- Massacre ---------------------------------
 // Diablo-style kill chain: each kill refreshes a short window; the more you
