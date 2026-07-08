@@ -2,6 +2,9 @@
 
 *Grow beyond the gods' patience.*
 
+**▶ Play it now: https://caseyrmorrison.github.io/hubris/** — auto-deployed
+from `main` by GitHub Actions on every push.
+
 A roguelite that fuses **Hades**' chamber-crawl and god-boon buildcraft with
 **Megabonk**'s horde-survival exponential growth. Fight through 10 chambers of
 the underworld, stack auto-weapons and tomes, take boons from Zeus, Ares, and
