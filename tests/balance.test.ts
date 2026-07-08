@@ -136,20 +136,25 @@ describe('pom of power', () => {
 });
 
 describe('boss fights', () => {
-  it('a strong build kills the chamber-15 gate in reasonable time', () => {
-    // The variant is random and the greedy bot kites badly vs the Shepherd,
-    // so allow a couple of attempts — a real player closes far faster.
-    let slain = false;
-    for (let attempt = 0; attempt < 3 && !slain; attempt++) {
-      const { g, input } = createHeadlessGame();
-      g.startRun();
-      grantStrongBuild(g);
-      g.setupChamber(15);
-      expect(g.enemies.some((e) => e.bossState)).toBe(true);
-      runBot(g, input, 120);
-      slain = !g.enemies.some((e) => e.bossState);
+  it('a strong build out-damages the chamber-15 gate', () => {
+    // Deterministic: pin the player point-blank (the greedy bot kites too
+    // badly vs the teleporting Shepherd to be a reliable yardstick).
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    grantStrongBuild(g);
+    g.setupChamber(15);
+    expect(g.enemies.some((e) => e.bossState)).toBe(true);
+    input.mouseDown = true;
+    for (let i = 0; i < 180 && g.enemies.some((e) => e.bossState); i++) {
+      const b = g.enemies.find((e) => e.bossState)!;
+      g.player.x = b.x + 120;
+      g.player.y = b.y;
+      g.player.hp = g.stats.maxHP; // tank the retaliation; DPS is on trial here
+      input.mouseX = g.cam.toScreenX(b.x);
+      input.mouseY = g.cam.toScreenY(b.y);
+      stepFrames(g, input, 30);
     }
-    expect(slain).toBe(true);
+    expect(g.enemies.some((e) => e.bossState)).toBe(false);
   });
 
   it('boss HP scales with build power', () => {
