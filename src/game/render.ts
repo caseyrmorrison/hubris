@@ -603,10 +603,10 @@ function drawEnemies(g: Game, ctx: CanvasRenderingContext2D): void {
     // Body polygon (boss only flickers its rim — it is hit near-constantly)
     const sides = e.kind === 'boss' ? 8 : def!.sides;
     const rot = e.wobble * (e.kind === 'skitter' ? 1.4 : 0.4);
-    const bruteWinding = e.kind === 'brute' && e.windup >= 0;
-    const flashing = (e.flash > 0 && (e.kind !== 'boss' || e.flash > 0.07)) || bruteWinding;
-    ctx.fillStyle = flashing ? (bruteWinding ? '#ff8f8f' : '#ffffff') : shade(color, 0.42);
-    ctx.strokeStyle = e.flash > 0 || bruteWinding ? '#ffffff' : color;
+    const winding = (e.kind === 'brute' || e.kind === 'reaver') && e.windup >= 0;
+    const flashing = (e.flash > 0 && (e.kind !== 'boss' || e.flash > 0.07)) || winding;
+    ctx.fillStyle = flashing ? (winding ? '#ff8f8f' : '#ffffff') : shade(color, 0.42);
+    ctx.strokeStyle = e.flash > 0 || winding ? '#ffffff' : color;
     ctx.lineWidth = e.kind === 'boss' ? 4 : 2;
     polygonPath(ctx, sx, sy, sides, r, rot);
     ctx.fill();

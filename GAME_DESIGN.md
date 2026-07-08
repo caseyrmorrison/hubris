@@ -103,8 +103,8 @@ Rarity roll: Common ×1.0 (white) / Rare ×1.5 (blue) / Epic ×2.25 (purple); lu
   (glowing, tougher, drop Ichor). Chamber 10: **The Gatekeeper** — 2-phase boss
   (radial bursts, telegraphed charge, add summons; enrage spiral at 50%).
 
-**Enemy roster (MVP):** Shade (chaser swarm), Skitter (fast pack), Spitter (ranged),
-Brute (tanky slugger), Cinder (kamikaze exploder) + Elite modifier + Gatekeeper boss.
+**Enemy roster:** Shade (chaser swarm), Skitter (fast pack), Spitter (ranged),
+Brute (tanky slugger), Cinder (kamikaze exploder), Weaver (fan-firing), Reaver (fast lunger), Stalker (interceptor that leads your movement) + Elite affixes + bosses.
 
 ## 7. Meta progression — Mirror of Hubris
 

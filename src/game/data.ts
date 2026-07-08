@@ -27,6 +27,8 @@ export const ENEMY_DEFS: Record<Exclude<EnemyKind, 'boss'>, EnemyDef> = {
   brute:   { hp: 95,  speed: 42,  touchDamage: 18, radius: 26, xp: 5, gold: 4, color: '#c94b4b', sides: 6, weight: 22,  minChamber: 4 },
   cinder:  { hp: 14,  speed: 120, touchDamage: 4,  radius: 12, xp: 2, gold: 1, color: '#ff9f45', sides: 3, weight: 30,  minChamber: 5 },
   weaver:  { hp: 34,  speed: 62,  touchDamage: 9,  radius: 15, xp: 3, gold: 3, color: '#ff6b9d', sides: 7, weight: 34,  minChamber: 6 },
+  reaver:  { hp: 24,  speed: 128, touchDamage: 12, radius: 13, xp: 3, gold: 2, color: '#ff5a3c', sides: 4, weight: 42,  minChamber: 3 },
+  stalker: { hp: 32,  speed: 120, touchDamage: 11, radius: 12, xp: 3, gold: 3, color: '#ff2e63', sides: 3, weight: 30,  minChamber: 5 },
 };
 
 /** Chamber scaling multipliers (c = 1-based chamber index). */

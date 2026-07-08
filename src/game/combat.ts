@@ -871,6 +871,44 @@ function updateEnemies(g: Game, dt: number): void {
         }
         break;
       }
+      case 'reaver': {
+        // Relentless: fast chase punctuated by frequent quick lunges.
+        if (e.lungeT > 0) {
+          e.lungeT -= dt;
+          e.x += e.lungeDirX * 680 * dt;
+          e.y += e.lungeDirY * 680 * dt;
+        } else if (e.windup >= 0) {
+          e.windup -= dt;
+          if (e.windup <= 0) {
+            e.windup = -1;
+            e.lungeT = 0.3;
+            e.lungeDirX = nx;
+            e.lungeDirY = ny;
+            g.audio.play('dash');
+          }
+        } else {
+          sx = nx; sy = ny; // fast base chase (see its high speed def)
+          e.atkT -= dt;
+          if (e.atkT <= 0 && dist < 340) {
+            e.atkT = rand(1.3, 1.9);
+            e.windup = 0.28; // a brief tell before it pounces
+            g.telegraphs.push({
+              kind: 'line', x: e.x, y: e.y,
+              x2: e.x + nx * 240, y2: e.y + ny * 240, radius: e.radius + 6, t: 0.28, maxT: 0.28,
+            });
+          }
+        }
+        break;
+      }
+      case 'stalker': {
+        // Cuts you off — aims where you're heading, not where you stand.
+        const leadX = p.x + p.moveX * 130;
+        const leadY = p.y + p.moveY * 130;
+        const ldx = leadX - e.x, ldy = leadY - e.y;
+        const ld = Math.hypot(ldx, ldy) || 1;
+        sx = ldx / ld; sy = ldy / ld;
+        break;
+      }
       default:
         sx = nx; sy = ny;
     }

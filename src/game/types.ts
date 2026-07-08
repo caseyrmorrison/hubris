@@ -82,7 +82,7 @@ export function emptyMods(): Mods {
   };
 }
 
-export type EnemyKind = 'shade' | 'skitter' | 'spitter' | 'brute' | 'cinder' | 'weaver' | 'boss';
+export type EnemyKind = 'shade' | 'skitter' | 'spitter' | 'brute' | 'cinder' | 'weaver' | 'reaver' | 'stalker' | 'boss';
 
 /** Elite affixes — elites from chamber 4 on roll one. */
 export type EliteMod = 'splitter' | 'warded' | 'burning' | null;

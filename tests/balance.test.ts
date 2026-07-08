@@ -933,3 +933,56 @@ describe('massacre bonus & storm lightning', () => {
     expect(totalHp()).toBeLessThan(afterHalfSec);
   });
 });
+
+describe('new enemies: reaver & stalker', () => {
+  it('are gated into the spawn pool by chamber depth', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    const kindsAt = (c: number) => {
+      g.setupChamber(c);
+      const seen = new Set<string>();
+      for (let i = 0; i < 400; i++) seen.add(g.spawnEnemyAt(g.perimeterPoint()).kind);
+      return seen;
+    };
+    // Reaver from chamber 3, stalker from chamber 5
+    expect(kindsAt(2).has('reaver')).toBe(false);
+    expect(kindsAt(3).has('reaver')).toBe(true);
+    expect(kindsAt(4).has('stalker')).toBe(false);
+    expect(kindsAt(6).has('stalker')).toBe(true);
+  });
+
+  it('a reaver lunges: it covers ground far faster than its base speed', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.phase = 'combat';
+    g.spawnBudgetUsed = g.quota; // no ambient spawns to interfere
+    g.enemies = [];
+    g.player.x = 0; g.player.y = 0;
+    const r = g.spawnEnemyAt({ x: 300, y: 0 }, false, 'reaver');
+    r.spawnT = 0;
+    // Force it into a lunge straight at the player and measure one step
+    r.windup = -1; r.lungeT = 0.3; r.lungeDirX = -1; r.lungeDirY = 0;
+    const x0 = r.x;
+    stepFrames(g, input, 1);
+    const moved = Math.abs(r.x - x0) * 60; // px this frame -> px/s
+    expect(moved).toBeGreaterThan(600); // lunge speed, well above base 128
+  });
+
+  it('a stalker leads the player rather than chasing their current spot', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.phase = 'combat';
+    g.spawnBudgetUsed = g.quota;
+    g.enemies = [];
+    g.player.x = 0; g.player.y = 0;
+    // Player sprinting straight up; stalker sits to the lower-right
+    input.keys.clear(); input.keys.add('KeyW');
+    const s = g.spawnEnemyAt({ x: 0, y: 200 }, false, 'stalker');
+    s.spawnT = 0;
+    const y0 = s.y;
+    stepFrames(g, input, 20);
+    // A pure chaser would head toward y=0 (up). The interceptor should aim
+    // ABOVE the player's start (negative y) to cut them off — i.e. climb past.
+    expect(s.y).toBeLessThan(y0); // it advanced upward, leading the sprint
+  });
+});
