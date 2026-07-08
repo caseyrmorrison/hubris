@@ -11,8 +11,9 @@ import { SpatialHash } from '../engine/spatial';
 import { choice, fmt, rand, randInt, TAU, weightedPick } from '../engine/math';
 import {
   BOON_DEFS, BOSSES, CHAMBER_COUNT, CHAOS_MODS, CHARACTERS, ENEMY_DEFS,
-  FATE_COLOR, MANA_SHIELD, TOME_DEFS, TOME_MAX_LEVEL, TOWER_DEFS, WEAPON_DEFS,
-  WEAPON_MAX_LEVEL, LEGENDARY_COLOR, biomeIndex, boonDef, bossHPFor,
+  FATE_COLOR, MANA_SHIELD, MASSACRE_MAX, MASSACRE_PER_KILL, MASSACRE_WINDOW,
+  THUNDER_DAMAGE, THUNDER_INTERVAL, TOME_DEFS, TOME_MAX_LEVEL, TOWER_DEFS,
+  WEAPON_DEFS, WEAPON_MAX_LEVEL, LEGENDARY_COLOR, biomeIndex, boonDef, bossHPFor,
   chamberQuota, characterDef, enemyDmgScale, enemyHPScale, isBossChamber,
   isTwinBossChamber, rollRarity, skinUnlocked, towerDef, weaponDef,
   weaponUnlocked, xpForLevel,
@@ -173,12 +174,16 @@ export class Game {
   chaosMods: ChaosModTotals = emptyChaosMods();
   fates: TakenFate[] = [];
   private stormT = 0;
+  private thunderT = THUNDER_INTERVAL; // baseline periodic lightning strike
 
   player: PlayerState = this.freshPlayer();
   stats: Stats = this.baseStats();
   mods: Mods = emptyMods();
   frenzyStacks = 0;
   frenzyIdleT = 0;
+  // Massacre: Diablo-style kill-chain XP multiplier that fades out of combat
+  massacreCount = 0;
+  massacreT = 0;
 
   level = 1;
   xp = 0;
@@ -505,6 +510,9 @@ export class Game {
     this.chaosMods = emptyChaosMods();
     this.fates = [];
     this.frenzyStacks = 0;
+    this.massacreCount = 0;
+    this.massacreT = 0;
+    this.thunderT = THUNDER_INTERVAL;
     this.player = this.freshPlayer();
     this.recomputeStats();
     this.player.hp = this.stats.maxHP;
@@ -549,6 +557,9 @@ export class Game {
     this.pendingClearT = 0;
     this.killsInChamber = 0;
     this.spawnBudgetUsed = 0;
+    this.massacreCount = 0;
+    this.massacreT = 0;
+    this.thunderT = THUNDER_INTERVAL;
     this.quota = Math.round(chamberQuota(c) * (1 + 0.4 * this.heat('quota')));
     this.enemies = [];
     this.projectiles = [];
@@ -847,6 +858,9 @@ export class Game {
     if (this.phase === 'combat') this.killsInChamber++;
     this.frenzyStacks++;
     this.frenzyIdleT = 0;
+    // Massacre chain: each kill extends the window and grows the multiplier
+    this.massacreCount++;
+    this.massacreT = MASSACRE_WINDOW;
     // Tome of the Leech
     if (this.stats.killHeal > 0) {
       this.player.hp = Math.min(this.stats.maxHP, this.player.hp + this.stats.killHeal);
@@ -941,8 +955,13 @@ export class Game {
     }
   }
 
+  /** Current massacre XP multiplier (1.0 when no chain is running). */
+  massacreMult(): number {
+    return 1 + Math.min(this.massacreCount * MASSACRE_PER_KILL, MASSACRE_MAX);
+  }
+
   gainXP(n: number): void {
-    this.xp += n * (1 + this.stats.xpGain);
+    this.xp += n * (1 + this.stats.xpGain) * this.massacreMult();
     while (this.xp >= this.xpNeeded) {
       this.xp -= this.xpNeeded;
       this.level++;
@@ -1707,6 +1726,34 @@ export class Game {
     this.frenzyIdleT += dt;
     if (this.frenzyIdleT > 2 && this.frenzyStacks > 0 && !this.mods.frenzyNoDecay) {
       this.frenzyStacks = Math.max(0, this.frenzyStacks - dt * 6);
+    }
+
+    // Massacre chain lapses if you stop killing — stay in the fray to keep it
+    if (this.massacreT > 0) {
+      this.massacreT -= dt;
+      if (this.massacreT <= 0) this.massacreCount = 0;
+    }
+
+    // Baseline lightning: an automatic thunder strike on a fixed cadence,
+    // targeting the nearest foe (a boss if it's the only thing standing).
+    if (this.phase === 'combat') {
+      this.thunderT -= dt;
+      if (this.thunderT <= 0) {
+        const px = this.player.x, py = this.player.y;
+        let target: Enemy | null = null;
+        let bestD2 = Infinity;
+        for (const e of this.enemies) {
+          if (e.hp <= 0 || e.spawnT > 0) continue;
+          const d2 = (e.x - px) ** 2 + (e.y - py) ** 2;
+          if (d2 < bestD2) { bestD2 = d2; target = e; }
+        }
+        if (target) {
+          this.thunderT = THUNDER_INTERVAL;
+          this.boltStrike(target.x, target.y, THUNDER_DAMAGE);
+        } else {
+          this.thunderT = 0.5; // nothing to hit yet — check back soon
+        }
+      }
     }
 
     // Obelisk buffs tick down; regen and storms act while live

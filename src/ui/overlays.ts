@@ -245,6 +245,7 @@ export class UIManager {
       `),
       el('p', 'howto-text', `
         Slay <span class="hl-purple">every foe</span> in the chamber, then walk into a door — doors show their reward.
+        Chain kills quickly for a <span class="hl-gold">Massacre</span> bonus — the streak multiplies your XP but fades fast, so keep the horde falling.
         Glowing <span class="hl-gold">obelisks</span> can be captured mid-fight: stand in the ring to channel (a wave will contest you) for powerful timed buffs — unclaimed obelisks crumble when the chamber clears.
         Collect <span class="hl-cyan">XP gems</span> to level up and stack <b>auto-weapons</b> and <b>tomes</b>.
         Doors marked <span class="hl-gold">Z / A / H</span> grant god boons with rarities; two gods' boons can unlock <span class="hl-gold">Duo boons</span>,

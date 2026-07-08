@@ -774,6 +774,28 @@ export function xpForLevel(level: number): number {
 
 export const CHAMBER_COUNT = 20; // the run: 20 chambers; escape at the final twins
 
+// --------------------------- Baseline lightning ---------------------------
+// Every character gets an automatic thunder strike on this cadence from the
+// very start. Tune the interval/damage here.
+export const THUNDER_INTERVAL = 10;  // seconds between baseline strikes
+export const THUNDER_DAMAGE = 45;    // base damage (runs through damage brackets)
+
+// ------------------------------- Massacre ---------------------------------
+// Diablo-style kill chain: each kill refreshes a short window; the more you
+// stack, the bigger the XP multiplier. Let it lapse and the chain resets.
+export const MASSACRE_WINDOW = 2.2;  // seconds a kill keeps the chain alive
+export const MASSACRE_PER_KILL = 0.02; // +2% XP per chained kill...
+export const MASSACRE_MAX = 1.5;     // ...capped at +150% XP (2.5x total)
+
+/** Escalating flavor labels by chain size. */
+export function massacreTier(count: number): { label: string; color: string } | null {
+  if (count >= 50) return { label: 'APOCALYPSE', color: '#ff4fd8' };
+  if (count >= 30) return { label: 'SLAUGHTER', color: '#ff5a5a' };
+  if (count >= 15) return { label: 'CARNAGE', color: '#ff9838' };
+  if (count >= 5) return { label: 'MASSACRE', color: '#f0c75e' };
+  return null;
+}
+
 /** A major boss guards every 5th chamber: 5, 10, 15, 20, ... */
 export function isBossChamber(c: number): boolean {
   return c >= 5 && c % 5 === 0;

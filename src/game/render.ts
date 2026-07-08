@@ -6,8 +6,8 @@ import { clamp, fmt, lerp, TAU } from '../engine/math';
 import { drawGlow, lightningPath, polygonPath, withAlpha } from '../engine/sprites';
 import type { Game } from './game';
 import {
-  AEGIS, BIOMES, BOSSES, ENEMY_DEFS, TOWER_CAPTURE_RADIUS, WEAPON_MAX_LEVEL,
-  boonDef, characterDef, towerDef, weaponDef,
+  AEGIS, BIOMES, BOSSES, ENEMY_DEFS, MASSACRE_WINDOW, TOWER_CAPTURE_RADIUS,
+  WEAPON_MAX_LEVEL, boonDef, characterDef, massacreTier, towerDef, weaponDef,
 } from './data';
 import { ELITE_MOD_COLOR, GOD_COLOR, RARITY_COLOR, type CinderPatch, type Enemy } from './types';
 
@@ -1288,6 +1288,37 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = '#ff5a5a';
     ctx.font = `700 13px ${SANS}`;
     ctx.fillText(`FRENZY +${Math.round(fr * 100)}%`, w - 22, 70);
+  }
+
+  // --- Massacre chain (center, above the arena) ---
+  const tier = massacreTier(g.massacreCount);
+  if (tier) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    const fade = clamp(g.massacreT / MASSACRE_WINDOW, 0, 1);
+    const pop = 1 + (1 - fade) * 0.05;
+    const cy = 96;
+    // Label + kill count
+    ctx.font = `800 ${Math.round(26 * pop)}px ${SERIF}`;
+    ctx.fillStyle = '#0a0d18';
+    ctx.fillText(`${tier.label} ×${g.massacreCount}`, w / 2 + 2, cy + 2);
+    ctx.fillStyle = tier.color;
+    ctx.fillText(`${tier.label} ×${g.massacreCount}`, w / 2, cy);
+    // XP bonus + a draining timer bar so you can feel it fade
+    const bonus = Math.round((g.massacreMult() - 1) * 100);
+    ctx.font = `700 12px ${SANS}`;
+    ctx.fillStyle = '#c9d2f0';
+    ctx.fillText(`+${bonus}% XP`, w / 2, cy + 18);
+    const bw = 150;
+    roundRect(ctx, w / 2 - bw / 2, cy + 24, bw, 4, 2);
+    ctx.fillStyle = 'rgba(8,10,20,0.6)';
+    ctx.fill();
+    if (fade > 0) {
+      roundRect(ctx, w / 2 - bw / 2, cy + 24, bw * fade, 4, 2);
+      ctx.fillStyle = tier.color;
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   // --- XP bar (bottom, full width) ---

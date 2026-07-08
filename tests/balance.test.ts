@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 import { describe, expect, it } from 'vitest';
 import { createHeadlessGame, grantStrongBuild, runBot, stepFrames } from '../src/testkit';
-import { WEAPON_DEFS, isBossChamber, weaponUnlocked } from '../src/game/data';
+import { MASSACRE_WINDOW as MASSACRE_WINDOW_S, WEAPON_DEFS, isBossChamber, weaponUnlocked } from '../src/game/data';
 import { defaultSave } from '../src/game/meta';
 
 describe('bracket damage math', () => {
@@ -858,5 +858,63 @@ describe('clear-the-map progression', () => {
     stepFrames(g, input, 60); // standing right on it
     expect(g.towers[0].progress).toBe(0);
     expect(g.towers[0].captured).toBe(false);
+  });
+});
+
+describe('massacre bonus & baseline lightning', () => {
+  it('kills build a fading XP multiplier that resets out of combat', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.phase = 'cleared'; // freeze spawns/thunder; drive kills manually
+    g.enemies = [];
+    expect(g.massacreMult()).toBe(1); // no chain yet
+    // Chain up 20 kills
+    for (let i = 0; i < 20; i++) {
+      const e = g.spawnEnemyAt({ x: 0, y: 0 }, false, 'shade');
+      e.spawnT = 0;
+      g.dealDamage(e, 1e9, { source: 'strike' });
+    }
+    expect(g.massacreCount).toBe(20);
+    expect(g.massacreMult()).toBeCloseTo(1.4); // +2% * 20
+    // XP is boosted by the live multiplier (raise the bar so no level-up eats it)
+    g.xpNeeded = 1e9;
+    const before = g.xp;
+    g.gainXP(100);
+    expect(g.xp - before).toBeCloseTo(100 * 1.4);
+    // Let the window lapse -> chain resets (needs phase 'combat' to tick)
+    g.phase = 'combat';
+    g.enemies = [];
+    stepFrames(g, input, Math.round(MASSACRE_WINDOW_S * 60) + 12);
+    expect(g.massacreCount).toBe(0);
+    expect(g.massacreMult()).toBe(1);
+  });
+
+  it('the XP multiplier is capped', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    g.massacreCount = 100000;
+    expect(g.massacreMult()).toBeCloseTo(2.5); // 1 + capped 1.5
+  });
+
+  it('a baseline thunderbolt strikes on its cadence with no boons', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.boons = [];
+    g.recomputeStats();
+    g.setupChamber(2);
+    // Park a lone foe with no weapons/attacks in play — only thunder can hit it
+    g.weapons = [];
+    g.enemies = [];
+    g.spawnBudgetUsed = g.quota; // stop the ambient spawner
+    const e = g.spawnEnemyAt({ x: g.player.x + 500, y: g.player.y }, false, 'brute');
+    e.spawnT = 0;
+    e.speed = 0; // hold it out at range so nothing but the bolt reaches it
+    const hp0 = e.hp;
+    // Just under the interval: nothing yet
+    stepFrames(g, input, Math.round(9 * 60));
+    expect(e.hp).toBe(hp0);
+    // Past the interval: it gets zapped
+    stepFrames(g, input, Math.round(2 * 60));
+    expect(e.hp).toBeLessThan(hp0);
   });
 });
