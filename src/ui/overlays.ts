@@ -591,6 +591,11 @@ export class UIManager {
         ['OFF', () => !st.autoFire, () => { st.autoFire = false; }],
         ['ON', () => st.autoFire, () => { st.autoFire = true; }],
       ]),
+      el('div', 'settings-divider', 'TESTING'),
+      cycle('Developer mode (` opens the panel)', [
+        ['OFF', () => !st.devMode, () => { st.devMode = false; }],
+        ['ON', () => st.devMode, () => { st.devMode = true; }],
+      ]),
     );
 
     // Save-data management — only from the main menu, never mid-run
@@ -729,6 +734,10 @@ export class UIManager {
     this.renderBoon();
     this.boon.classList.add('visible');
   }
+
+  /** Dev panel entry points — same flows the game itself drives. */
+  openShopForDev(): void { this.openShop(); }
+  openPomForDev(): void { this.openPom(); }
 
   /** Boss reward: choose one Legendary — no rerolls, the gods insist. */
   private openLegendary(): void {

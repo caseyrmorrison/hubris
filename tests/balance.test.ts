@@ -670,6 +670,30 @@ describe('expanded mirror of hubris', () => {
     expect(g.boons.length).toBe(boons0 + 1);
   });
 
+  it('dev mode hooks: god mode blocks all damage, devMods stack into stats', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    g.player.invulnT = 0;
+    g.devGodMode = true;
+    g.hurtPlayer(9999);
+    expect(g.player.hp).toBe(g.stats.maxHP);   // untouchable
+    g.devGodMode = false;
+    g.hurtPlayer(10);
+    expect(g.player.hp).toBeLessThan(g.stats.maxHP);
+    // devMods survive recomputes and stack onto every stat channel
+    g.devMods = { might: 0.5, pierce: 2, area: 0.25, range: 0.25, projectiles: 1 };
+    g.recomputeStats();
+    expect(g.stats.might).toBeGreaterThanOrEqual(0.5);
+    expect(g.stats.pierce).toBeGreaterThanOrEqual(2);
+    expect(g.stats.projectiles).toBeGreaterThanOrEqual(1);
+    // ...and zero out cleanly
+    g.devMods = { might: 0, pierce: 0, area: 0, range: 0, projectiles: 0 };
+    g.recomputeStats();
+    expect(g.stats.pierce).toBe(0);
+    // devMode setting defaults off and round-trips saves
+    expect(g.save.settings.devMode).toBe(false);
+  });
+
   it('banked awakening picks fold into the first natural level-up', () => {
     const { g } = createHeadlessGame();
     g.save.mirror = { awakening: 2 };

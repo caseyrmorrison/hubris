@@ -202,6 +202,12 @@ export class Game {
   shopItems: ShopItem[] = [];
   lastUnlocks: string[] = [];
 
+  // Developer/testing mode (never persisted; driven by the dev panel)
+  devGodMode = false;      // hurtPlayer becomes a no-op
+  devTimeScale = 1;        // sim speed multiplier applied by the main loop
+  devPaused = false;       // main loop halts; the panel can single-step
+  devMods = { might: 0, pierce: 0, area: 0, range: 0, projectiles: 0 };
+
   // incremental meta banking (endless mode banks more than once per run)
   private runEnded = false;
   private runCounted = false;
@@ -329,6 +335,12 @@ export class Game {
     s.goldGain += cm.goldGain;
     s.xpGain += cm.xpGain;
     s.luck += cm.luck;
+    // Dev panel stat tweaks (zero outside dev sessions)
+    s.might += this.devMods.might;
+    s.pierce += this.devMods.pierce;
+    s.area += this.devMods.area;
+    s.range += this.devMods.range;
+    s.projectiles += this.devMods.projectiles;
     s.maxHP = Math.max(40, s.maxHP);
     this.stats = s;
     this.mods = mods;
@@ -1048,6 +1060,7 @@ export class Game {
 
   hurtPlayer(dmg: number, fromX?: number, fromY?: number): void {
     const p = this.player;
+    if (this.devGodMode) return; // dev panel: untouchable
     if (this.phase === 'over' || this.deathT > 0) return;
     // Every hit respects dodge i-frames and the mercy window — including the
     // Archon's arrival shockwave, which is why a well-timed dash slips it.
@@ -1409,6 +1422,12 @@ export class Game {
    * from the ceiling — crushing the trio instantly, shoving the player back
    * with an unavoidable chip of damage, and opening the true final fight.
    */
+  /** Dev panel: force the Archon drop even if one already happened. */
+  devArchonDrop(): void {
+    this.sovereignSpawned = false;
+    this.archonDrop();
+  }
+
   archonDrop(): void {
     if (this.sovereignSpawned) return;
     this.sovereignSpawned = true;

@@ -3,6 +3,7 @@ import { AudioSys } from './engine/audio';
 import { Game } from './game/game';
 import { render } from './game/render';
 import { UIManager } from './ui/overlays';
+import { DevPanel } from './ui/devpanel';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -11,6 +12,7 @@ const input = new Input(document.body, canvas);
 const audio = new AudioSys();
 const game = new Game(input, audio);
 const ui = new UIManager(game);
+const devPanel = new DevPanel(game, ui);
 
 // Touch devices: default the accessibility assists ON for fresh saves —
 // twin-stick-with-assists is the intended mobile experience.
@@ -83,17 +85,21 @@ function frame(now: number): void {
     );
   }
   if (input.pressed('PadStart')) ui.togglePause();
+  if (input.pressed('Backquote') && game.save.settings.devMode) devPanel.toggle();
   ui.updatePad();
+  devPanel.tick();
 
-  if (game.state === 'run' && !game.overlayOpen) {
-    acc += elapsed;
+  if (game.state === 'run' && !game.overlayOpen && !game.devPaused) {
+    acc += elapsed * game.devTimeScale;
+    // Faster dev time scales need more catch-up steps per frame
+    const maxSteps = Math.max(5, Math.ceil(game.devTimeScale * 5));
     let steps = 0;
-    while (acc >= STEP && steps < 5) {
+    while (acc >= STEP && steps < maxSteps) {
       game.update(STEP);
       acc -= STEP;
       steps++;
     }
-    if (steps === 5) acc = 0; // dropped frames: don't spiral
+    if (steps === maxSteps) acc = 0; // dropped frames: don't spiral
   } else {
     acc = 0;
   }
