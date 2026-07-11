@@ -406,39 +406,47 @@ export class UIManager {
 
   private renderMirror(): void {
     const g = this.g;
-    // Re-rendering after a purchase must not yank the list back to the top —
-    // remember where the player was scrolled to and put them right back.
-    const prevScroll = this.mirror.querySelector('.panel')?.scrollTop ?? this.mirror.scrollTop;
     this.mirror.innerHTML = '';
     const panel = el('div', 'panel mirror');
     panel.append(el('h2', 'panel-title', 'MIRROR OF HUBRIS'));
-    panel.append(el('div', 'mirror-balance', `⬥ ${fmt(g.save.ichor)} ichor`));
+    const balance = el('div', 'mirror-balance', `⬥ ${fmt(g.save.ichor)} ichor`);
+    panel.append(balance);
     const grid = el('div', 'mirror-grid');
+    // Purchases update every card IN PLACE — no rebuild, so the layout never
+    // jumps and the scroll position never moves.
+    const refreshers: Array<() => void> = [];
+    const refreshAll = (): void => {
+      balance.textContent = `⬥ ${fmt(g.save.ichor)} ichor`;
+      for (const f of refreshers) f();
+    };
     for (const def of MIRROR_DEFS) {
-      const lvl = mirrorLevel(g.save, def.id);
-      const cost = mirrorNextCost(g.save, def.id);
       const card = el('div', 'mirror-card');
-      const pips = Array.from({ length: def.maxLevel }, (_, i) =>
-        `<span class="pip ${i < lvl ? 'on' : ''}"></span>`).join('');
       card.innerHTML = `
-        <div class="mc-head"><b>${def.name}</b><span class="pips">${pips}</span></div>
+        <div class="mc-head"><b>${def.name}</b><span class="pips"></span></div>
         <div class="mc-desc">${def.desc}</div>`;
-      const btn = el('button', 'btn tiny', cost === null ? 'MAXED' : `BUY · ⬥${cost}`) as HTMLButtonElement;
-      btn.disabled = cost === null || g.save.ichor < cost;
+      const pipsEl = card.querySelector('.pips')!;
+      const btn = el('button', 'btn tiny') as HTMLButtonElement;
+      const refresh = (): void => {
+        const lvl = mirrorLevel(g.save, def.id);
+        const cost = mirrorNextCost(g.save, def.id);
+        pipsEl.innerHTML = Array.from({ length: def.maxLevel }, (_, i) =>
+          `<span class="pip ${i < lvl ? 'on' : ''}"></span>`).join('');
+        btn.textContent = cost === null ? 'MAXED' : `BUY · ⬥${cost}`;
+        btn.disabled = cost === null || g.save.ichor < cost;
+      };
       btn.onclick = () => {
         if (tryBuyMirror(g.save, def.id)) {
           g.audio.play('boon');
-          this.renderMirror();
+          refreshAll();
         }
       };
+      refresh();
+      refreshers.push(refresh);
       card.append(btn);
       grid.append(card);
     }
     panel.append(grid, this.backToMenu(this.mirror));
     this.mirror.append(panel);
-    // Restore the scroll position (whichever container actually scrolls)
-    panel.scrollTop = prevScroll;
-    this.mirror.scrollTop = prevScroll;
   }
 
   private renderUnlocks(): void {

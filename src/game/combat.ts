@@ -926,7 +926,7 @@ function updateEnemies(g: Game, dt: number): void {
           const a = Math.atan2(dy, dx);
           g.projectiles.push(makeProj('hex', e.x, e.y,
             Math.cos(a) * 150, Math.sin(a) * 150, 11, e.touchDamage, false, 0, 0));
-          g.audio.play('nova');
+          g.audio.play('hexCast');
         }
         break;
       }
@@ -941,7 +941,7 @@ function updateEnemies(g: Game, dt: number): void {
             g.particles.burst(e.x, e.y, '#d4a24e', 26, { speed: 320, size: 7, life: 0.5 });
             g.shockwaves.push({ x: e.x, y: e.y, r: 12, maxR: R, life: 0.32, color: '#d4a24e' });
             g.cam.shake(6);
-            g.audio.play('nova');
+            g.audio.play('slam');
             if (Math.hypot(p.x - e.x, p.y - e.y) < R + PLAYER_RADIUS) {
               g.hurtPlayer(e.touchDamage * 1.5, e.x, e.y);
             }
@@ -972,7 +972,7 @@ function updateEnemies(g: Game, dt: number): void {
             e.x = clamp(p.x + Math.cos(a) * r, -g.arenaHalfW + 20, g.arenaHalfW - 20);
             e.y = clamp(p.y + Math.sin(a) * r, -g.arenaHalfH + 20, g.arenaHalfH - 20);
             g.particles.burst(e.x, e.y, '#55f2d6', 14, { speed: 240, size: 5, life: 0.4 });
-            g.audio.play('dash');
+            g.audio.play('blink');
           }
         } else {
           sx = nx; sy = ny;

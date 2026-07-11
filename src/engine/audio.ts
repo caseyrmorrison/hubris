@@ -10,10 +10,12 @@ import type { Settings } from '../game/meta';
 type SfxName =
   | 'hit' | 'crit' | 'dash' | 'pickup' | 'gold' | 'levelup' | 'boon' | 'hurt'
   | 'enemyDie' | 'door' | 'bolt' | 'nova' | 'bossRoar' | 'defiance' | 'ui'
-  | 'transcend' | 'ichor' | 'unlock' | 'buy';
+  | 'transcend' | 'ichor' | 'unlock' | 'buy'
+  | 'hexCast' | 'slam' | 'blink';
 
 const THROTTLE_MS: Partial<Record<SfxName, number>> = {
   hit: 45, enemyDie: 40, pickup: 30, bolt: 70, hurt: 120, gold: 40,
+  hexCast: 90, slam: 110, blink: 70,
 };
 
 export type MusicMood = 'calm' | 'combat' | 'boss';
@@ -222,6 +224,21 @@ export class AudioSys {
         break;
       case 'ui':
         this.tone(440, 0.05, 'sine', 0.06, 520);
+        break;
+      case 'hexCast':
+        // Eerie warble: two detuned voices sliding down an octave
+        this.tone(520, 0.32, 'sine', 0.09, 260);
+        this.tone(526, 0.3, 'triangle', 0.06, 264, 0.02);
+        break;
+      case 'slam':
+        // Ground-shaking thud: deep saw drop under a dirt burst
+        this.tone(95, 0.32, 'sawtooth', 0.22, 38);
+        this.noise(0.24, 0.16, 320);
+        break;
+      case 'blink':
+        // Teleport zip: fast rising whistle with a sparkle tail
+        this.tone(680, 0.13, 'sine', 0.1, 1700);
+        this.noise(0.1, 0.05, 6000, 'highpass');
         break;
     }
   }
