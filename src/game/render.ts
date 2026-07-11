@@ -1207,26 +1207,54 @@ const HUD_SIZES: Record<string, { scale: number; inset: number }> = {
   huge: { scale: 1.5, inset: 16 },
 };
 
+// Vertical thickness (HUD-space px) of the top and bottom indicator bands —
+// used by the 'outside' anchor to seat each band in the margin beyond the arena.
+const HUD_TOP_BAND = 104;
+const HUD_BOTTOM_BAND = 92;
+
+/**
+ * The screen-space rectangle the in-run HUD lays out against. Three modes
+ * (settings → HUD POSITION):
+ *  - 'screen'  : pinned to the viewport edges (classic).
+ *  - 'inside'  : hugs the INSIDE of the visible play-area edges.
+ *  - 'outside' : seats the top/bottom indicator bands in the dead-space just
+ *                OUTSIDE the arena; falls back to the screen edges when the
+ *                arena is as big as (or bigger than) the viewport.
+ * Camera shake is excluded so the HUD never jitters.
+ */
+function hudBox(g: Game): { x0: number; y0: number; x1: number; y1: number } {
+  const vw = g.cam.viewW, vh = g.cam.viewH;
+  const k = (HUD_SIZES[g.save.settings.hudSize] ?? HUD_SIZES.default).scale;
+  const camL = g.cam.x - vw / 2;
+  const camT = g.cam.y - vh / 2;
+  const aL = -g.arenaHalfW - camL, aT = -g.arenaHalfH - camT;
+  const aR = g.arenaHalfW - camL, aB = g.arenaHalfH - camT;
+  const mode = g.save.settings.hudAnchor ?? 'outside';
+  if (mode === 'screen') return { x0: 0, y0: 0, x1: vw, y1: vh };
+  if (mode === 'inside') {
+    return { x0: Math.max(0, aL), y0: Math.max(0, aT), x1: Math.min(vw, aR), y1: Math.min(vh, aB) };
+  }
+  // 'outside': push each band out past the arena edge into the margin, then
+  // clamp to the screen so nothing leaves the viewport.
+  return {
+    x0: clamp(aL, 0, vw),
+    y0: clamp(aT - HUD_TOP_BAND * k, 0, vh),
+    x1: clamp(aR, 0, vw),
+    y1: clamp(aB + HUD_BOTTOM_BAND * k, 0, vh),
+  };
+}
+
 function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
   const size = HUD_SIZES[g.save.settings.hudSize] ?? HUD_SIZES.default;
   const k = size.scale;
-  // Anchor the HUD to the visible play area. On screens larger than the
-  // arena, the floor doesn't fill the window — the HUD hugs the arena's
-  // edges instead of floating out in the void beyond them.
-  // (shake excluded — the HUD must not jitter with the camera)
-  const camL = g.cam.x - g.cam.viewW / 2;
-  const camT = g.cam.y - g.cam.viewH / 2;
-  const ax0 = Math.max(0, -g.arenaHalfW - camL);
-  const ay0 = Math.max(0, -g.arenaHalfH - camT);
-  const ax1 = Math.min(g.cam.viewW, g.arenaHalfW - camL);
-  const ay1 = Math.min(g.cam.viewH, g.arenaHalfH - camT);
+  const box = hudBox(g);
   ctx.save();
-  ctx.translate(ax0 + size.inset, ay0 + size.inset);
+  ctx.translate(box.x0 + size.inset, box.y0 + size.inset);
   ctx.scale(k, k);
   // Effective view size in HUD-space: everything below lays out against these,
-  // so right/bottom-anchored elements stay inside the play area at any scale.
-  const w = (ax1 - ax0 - size.inset * 2) / k;
-  const h = (ay1 - ay0 - size.inset * 2) / k;
+  // so right/bottom-anchored elements stay within the box at any scale.
+  const w = (box.x1 - box.x0 - size.inset * 2) / k;
+  const h = (box.y1 - box.y0 - size.inset * 2) / k;
   const p = g.player;
   const s = g.stats;
 

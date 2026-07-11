@@ -243,6 +243,15 @@ describe('save persistence', () => {
     expect(back.settings.hudSize).toBe('default');
   });
 
+  it('old saves without hudAnchor default to the outside-arena HUD', async () => {
+    const { exportSave, importSave, defaultSettings } = await import('../src/game/meta');
+    expect(defaultSettings().hudAnchor).toBe('outside');
+    const s = defaultSave() as unknown as { settings: Record<string, unknown> };
+    delete s.settings.hudAnchor; // a pre-hudAnchor save code
+    const back = importSave(exportSave(s as never))!;
+    expect(back.settings.hudAnchor).toBe('outside');
+  });
+
   it('wipeSave restores factory defaults', () => {
     const { g } = createHeadlessGame();
     g.save.ichor = 99;

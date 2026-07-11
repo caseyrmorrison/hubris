@@ -10,6 +10,7 @@ export interface Settings {
   autoAim: boolean;                      // aim locks to the nearest enemy
   autoFire: boolean;                     // attack whenever a target is in range
   hudSize: 'default' | 'large' | 'huge'; // scales the in-run HUD + pads it off the edges
+  hudAnchor: 'outside' | 'screen' | 'inside'; // where the HUD sits vs the play area
   devMode: boolean;                      // unlocks the developer/testing panel (` or DEV button)
 }
 
@@ -48,7 +49,8 @@ const KEY = 'hubris_save_v1';
 export function defaultSettings(): Settings {
   return {
     master: 0.8, music: 0.6, sfx: 0.9, shake: 1, dmgNumbers: 'full',
-    autoAim: false, autoFire: false, hudSize: 'default', devMode: false,
+    autoAim: false, autoFire: false, hudSize: 'default', hudAnchor: 'outside',
+    devMode: false,
   };
 }
 
