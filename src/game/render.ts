@@ -50,21 +50,6 @@ export function render(g: Game, ctx: CanvasRenderingContext2D): void {
   drawVignette(ctx, w, h);
 
   if (g.state === 'run') {
-    // Shade the reserved HUD bands so they read as chrome, not map — the
-    // arena can extend beneath them when it's larger than the world view.
-    const bandTop = g.cam.padTop;
-    const bandBot = g.cam.padTop + g.cam.viewH;
-    if (bandTop > 0 || bandBot < h) {
-      ctx.fillStyle = 'rgba(8,10,20,0.84)';
-      ctx.fillRect(0, 0, w, bandTop);
-      ctx.fillRect(0, bandBot, w, h - bandBot);
-      ctx.strokeStyle = 'rgba(58,68,120,0.45)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, bandTop + 0.5); ctx.lineTo(w, bandTop + 0.5);
-      ctx.moveTo(0, bandBot - 0.5); ctx.lineTo(w, bandBot - 0.5);
-      ctx.stroke();
-    }
     drawTowerArrows(g, ctx);
     drawHUD(g, ctx);
     drawTouchUI(g, ctx);
