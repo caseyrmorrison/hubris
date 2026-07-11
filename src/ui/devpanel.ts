@@ -2,12 +2,14 @@
 // Developer/testing panel: a compact in-game console for exercising every
 // system — chamber jumps, cheats, build granting, spawns, time control.
 // Enabled via Settings → Developer mode, then ` (backtick) or the DEV button.
-// Nothing here persists into saves except the devMode setting itself.
+// Nothing here persists into saves except the devMode setting itself — with
+// the deliberate exception of the META section, which edits the save so you
+// can test the unlocked/maxed endgame without the grind.
 // ---------------------------------------------------------------------------
 import type { Game } from '../game/game';
 import type { UIManager } from './overlays';
 import { spawnBoss } from '../game/combat';
-import { ENEMY_DEFS, WEAPON_DEFS, WEAPON_MAX_LEVEL, weaponUnlocked } from '../game/data';
+import { ENEMY_DEFS, MIRROR_DEFS, WEAPON_DEFS, WEAPON_MAX_LEVEL, weaponUnlocked } from '../game/data';
 import type { GodId } from '../game/types';
 import { rand } from '../engine/math';
 
@@ -199,6 +201,21 @@ export class DevPanel {
     const over = this.section('OVERLAYS');
     this.btn(over, 'SHOP', this.inRun(() => { g.shopItems = g.genShopItems(); this.ui.openShopForDev(); }));
     this.btn(over, 'POM', this.inRun(() => this.ui.openPomForDev()));
+
+    const meta = this.section('META (persists to save)');
+    this.btn(meta, 'UNLOCK ALL WEAPONS', () => {
+      for (const def of WEAPON_DEFS) {
+        if (def.unlock && !g.save.seenUnlocks.includes(def.id)) g.save.seenUnlocks.push(def.id);
+      }
+      g.applySettings(); // persists the save
+      this.ui.showToast('All weapons unlocked', '#8fdcff');
+    });
+    this.btn(meta, 'MAX ALL MIRRORS', () => {
+      for (const def of MIRROR_DEFS) g.save.mirror[def.id] = def.maxLevel;
+      g.recomputeStats();
+      g.applySettings();
+      this.ui.showToast('Mirror of Hubris fully maxed', '#e05780');
+    });
 
     const time = this.section('TIME');
     for (const s of [0.25, 0.5, 1, 2, 4]) {
