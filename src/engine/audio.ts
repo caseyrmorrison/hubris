@@ -44,8 +44,7 @@ export class AudioSys {
   private barIndex = 0;
   private settings: Settings = {
     master: 0.8, music: 0.6, sfx: 0.9, shake: 1, dmgNumbers: 'full',
-    autoAim: false, autoFire: false, hudSize: 'default', hudAnchor: 'outside',
-    devMode: false,
+    autoAim: false, autoFire: false, hudSize: 'default', devMode: false,
   };
   private ducked = false;
   mood: MusicMood = 'calm';

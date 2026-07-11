@@ -3,8 +3,14 @@ import { clamp, damp, rand } from './math';
 export class Camera {
   x = 0;
   y = 0;
+  /** WORLD-view size: the slice of canvas the game world renders into. */
   viewW = 1280;
   viewH = 720;
+  /** Full canvas size (CSS px). The HUD lays out against these. */
+  screenW = 1280;
+  screenH = 720;
+  /** Reserved HUD band above the world view; world pixels start below it. */
+  padTop = 0;
   /** User setting: 1 full, 0.4 reduced, 0 off. */
   shakeScale = 1;
   private shakeAmt = 0;
@@ -40,9 +46,9 @@ export class Camera {
   top(): number { return this.y - this.viewH / 2 + this.shakeY; }
 
   toScreenX(wx: number): number { return wx - this.left(); }
-  toScreenY(wy: number): number { return wy - this.top(); }
+  toScreenY(wy: number): number { return wy - this.top() + this.padTop; }
   toWorldX(sx: number): number { return sx + this.left(); }
-  toWorldY(sy: number): number { return sy + this.top(); }
+  toWorldY(sy: number): number { return sy - this.padTop + this.top(); }
 
   isVisible(wx: number, wy: number, pad = 80): boolean {
     return (

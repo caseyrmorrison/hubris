@@ -20,7 +20,7 @@ import {
   type SkinDef,
 } from './data';
 import {
-  applyMirrorToStats, charStatsFor, defaultSave, heatLevel, loadSave,
+  applyMirrorToStats, charStatsFor, defaultSave, heatLevel, hudBands, loadSave,
   mirrorLevel, persistSave, totalHeat, type SaveData,
 } from './meta';
 import {
@@ -252,6 +252,12 @@ export class Game {
   applySettings(): void {
     this.audio.setSettings(this.save.settings);
     this.cam.shakeScale = this.save.settings.shake;
+    // Reserve the HUD bands: the world view is the canvas minus them, so the
+    // indicators always have their own space outside the play area.
+    const bands = hudBands(this.save.settings);
+    this.cam.padTop = bands.top;
+    this.cam.viewW = this.cam.screenW;
+    this.cam.viewH = Math.max(240, this.cam.screenH - bands.top - bands.bottom);
     persistSave(this.save);
   }
 

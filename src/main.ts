@@ -4,6 +4,7 @@ import { Game } from './game/game';
 import { render } from './game/render';
 import { UIManager } from './ui/overlays';
 import { DevPanel } from './ui/devpanel';
+import { hudBands } from './game/meta';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -35,8 +36,13 @@ function resize(): void {
   canvas.style.width = `${w}px`;
   canvas.style.height = `${h}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  game.cam.screenW = w;
+  game.cam.screenH = h;
+  // World view = canvas minus the reserved HUD bands (see hudBands)
+  const bands = hudBands(game.save.settings);
+  game.cam.padTop = bands.top;
   game.cam.viewW = w;
-  game.cam.viewH = h;
+  game.cam.viewH = Math.max(240, h - bands.top - bands.bottom);
   input.viewW = w;
   input.dashBtnX = w - 84;
   input.dashBtnY = h - 130;
@@ -72,7 +78,7 @@ function frame(now: number): void {
   last = now;
 
   // Catch late layout: keep canvas in sync with the real viewport
-  if (window.innerWidth && (window.innerWidth !== game.cam.viewW || window.innerHeight !== game.cam.viewH)) {
+  if (window.innerWidth && (window.innerWidth !== game.cam.screenW || window.innerHeight !== game.cam.screenH)) {
     resize();
   }
 

@@ -10,8 +10,30 @@ export interface Settings {
   autoAim: boolean;                      // aim locks to the nearest enemy
   autoFire: boolean;                     // attack whenever a target is in range
   hudSize: 'default' | 'large' | 'huge'; // scales the in-run HUD + pads it off the edges
-  hudAnchor: 'outside' | 'screen' | 'inside'; // where the HUD sits vs the play area
   devMode: boolean;                      // unlocks the developer/testing panel (` or DEV button)
+}
+
+// ---------------------------- HUD geometry --------------------------------
+// The HUD lives OUTSIDE the play area. On large screens it seats itself in
+// the natural margin around the arena; when the arena would fill the screen,
+// these bands are RESERVED above and below the world view so the indicators
+// always have their own space and never sit on the map.
+
+/** Scale + edge inset per HUD SIZE setting. */
+export const HUD_SIZES: Record<Settings['hudSize'], { scale: number; inset: number }> = {
+  default: { scale: 1, inset: 0 },
+  large: { scale: 1.25, inset: 8 },
+  huge: { scale: 1.5, inset: 16 },
+};
+
+/** Vertical thickness (unscaled px) of the top / bottom indicator bands. */
+export const HUD_TOP_BAND = 112;
+export const HUD_BOTTOM_BAND = 100;
+
+/** Screen-space band heights for the current settings. */
+export function hudBands(s: Settings): { top: number; bottom: number } {
+  const k = HUD_SIZES[s.hudSize]?.scale ?? 1;
+  return { top: Math.round(HUD_TOP_BAND * k), bottom: Math.round(HUD_BOTTOM_BAND * k) };
 }
 
 /** Per-character lifetime stats — drive skin unlock tasks. */
@@ -49,8 +71,7 @@ const KEY = 'hubris_save_v1';
 export function defaultSettings(): Settings {
   return {
     master: 0.8, music: 0.6, sfx: 0.9, shake: 1, dmgNumbers: 'full',
-    autoAim: false, autoFire: false, hudSize: 'default', hudAnchor: 'outside',
-    devMode: false,
+    autoAim: false, autoFire: false, hudSize: 'default', devMode: false,
   };
 }
 

@@ -243,13 +243,24 @@ describe('save persistence', () => {
     expect(back.settings.hudSize).toBe('default');
   });
 
-  it('old saves without hudAnchor default to the outside-arena HUD', async () => {
-    const { exportSave, importSave, defaultSettings } = await import('../src/game/meta');
-    expect(defaultSettings().hudAnchor).toBe('outside');
-    const s = defaultSave() as unknown as { settings: Record<string, unknown> };
-    delete s.settings.hudAnchor; // a pre-hudAnchor save code
-    const back = importSave(exportSave(s as never))!;
-    expect(back.settings.hudAnchor).toBe('outside');
+  it('the camera reserves HUD bands: padTop offsets screen<->world round-trips', async () => {
+    const { Camera } = await import('../src/engine/camera');
+    const { hudBands, defaultSettings } = await import('../src/game/meta');
+    const cam = new Camera();
+    cam.screenW = 800; cam.screenH = 600;
+    const bands = hudBands(defaultSettings());
+    expect(bands.top).toBe(112);
+    expect(bands.bottom).toBe(100);
+    cam.padTop = bands.top;
+    cam.viewW = 800; cam.viewH = 600 - bands.top - bands.bottom;
+    cam.x = 123; cam.y = -456;
+    // World origin maps below the reserved top band, and round-trips exactly
+    expect(cam.toScreenY(cam.y)).toBe(bands.top + cam.viewH / 2);
+    for (const wy of [-500, 0, 777]) expect(cam.toWorldY(cam.toScreenY(wy))).toBeCloseTo(wy);
+    for (const wx of [-500, 0, 777]) expect(cam.toWorldX(cam.toScreenX(wx))).toBeCloseTo(wx);
+    // Bands scale with the HUD size setting
+    const large = hudBands({ ...defaultSettings(), hudSize: 'large' });
+    expect(large.top).toBe(Math.round(112 * 1.25));
   });
 
   it('wipeSave restores factory defaults', () => {

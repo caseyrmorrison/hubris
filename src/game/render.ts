@@ -10,6 +10,7 @@ import {
   WEAPON_MAX_LEVEL, boonDef, characterDef, massacreTier, towerDef, weaponDef,
 } from './data';
 import { ELITE_MOD_COLOR, GOD_COLOR, RARITY_COLOR, type CinderPatch, type Enemy } from './types';
+import { HUD_BOTTOM_BAND, HUD_SIZES, HUD_TOP_BAND } from './meta';
 
 const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif';
 const SANS = 'ui-sans-serif, system-ui, sans-serif';
@@ -18,8 +19,9 @@ let vignette: HTMLCanvasElement | null = null;
 let vignetteKey = '';
 
 export function render(g: Game, ctx: CanvasRenderingContext2D): void {
-  const w = g.cam.viewW;
-  const h = g.cam.viewH;
+  // Full canvas — the world view is the slice between the reserved HUD bands
+  const w = g.cam.screenW;
+  const h = g.cam.screenH;
 
   // Background
   ctx.fillStyle = '#0a0d18';
@@ -48,6 +50,21 @@ export function render(g: Game, ctx: CanvasRenderingContext2D): void {
   drawVignette(ctx, w, h);
 
   if (g.state === 'run') {
+    // Shade the reserved HUD bands so they read as chrome, not map — the
+    // arena can extend beneath them when it's larger than the world view.
+    const bandTop = g.cam.padTop;
+    const bandBot = g.cam.padTop + g.cam.viewH;
+    if (bandTop > 0 || bandBot < h) {
+      ctx.fillStyle = 'rgba(8,10,20,0.84)';
+      ctx.fillRect(0, 0, w, bandTop);
+      ctx.fillRect(0, bandBot, w, h - bandBot);
+      ctx.strokeStyle = 'rgba(58,68,120,0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, bandTop + 0.5); ctx.lineTo(w, bandTop + 0.5);
+      ctx.moveTo(0, bandBot - 0.5); ctx.lineTo(w, bandBot - 0.5);
+      ctx.stroke();
+    }
     drawTowerArrows(g, ctx);
     drawHUD(g, ctx);
     drawTouchUI(g, ctx);
@@ -446,17 +463,19 @@ function drawChests(g: Game, ctx: CanvasRenderingContext2D): void {
 /** Edge-of-screen arrows pointing at uncaptured obelisks. */
 function drawTowerArrows(g: Game, ctx: CanvasRenderingContext2D): void {
   if (g.phase !== 'combat' && g.phase !== 'cleared') return;
+  // Arrows live in the world view band (between the reserved HUD bands)
   const w = g.cam.viewW;
-  const h = g.cam.viewH;
+  const top = g.cam.padTop;
+  const bot = g.cam.padTop + g.cam.viewH;
   for (const t of g.towers) {
     if (t.captured) continue;
     const sx = g.cam.toScreenX(t.x);
     const sy = g.cam.toScreenY(t.y - 30);
-    if (sx > -40 && sx < w + 40 && sy > -40 && sy < h + 40) continue; // on screen
+    if (sx > -40 && sx < w + 40 && sy > top - 40 && sy < bot + 40) continue; // on screen
     const def = towerDef(t.kind);
     const pad = 40;
     const cx = clamp(sx, pad, w - pad);
-    const cy = clamp(sy, pad + 40, h - pad - 40);
+    const cy = clamp(sy, top + pad, bot - pad);
     const a = Math.atan2(sy - cy, sx - cx);
     ctx.save();
     ctx.globalAlpha = 0.65 + Math.sin(performance.now() / 250) * 0.2;
@@ -1176,12 +1195,12 @@ function drawBanner(g: Game, ctx: CanvasRenderingContext2D, w: number, h: number
   // Anchor to the visible play area, matching the HUD — mixed anchoring made
   // the banner collide with HUD text whenever the arena's top edge was on
   // screen.
-  const camL = g.cam.x - w / 2;
-  const camT = g.cam.y - h / 2;
+  const camL = g.cam.x - g.cam.viewW / 2;
+  const camT = g.cam.y - g.cam.viewH / 2;
   // y=240: below the top-wall door row & its labels (~130) and clear of the
   // massacre readout band (~168-212 in HUD space).
   const bx = (Math.max(0, -g.arenaHalfW - camL) + Math.min(w, g.arenaHalfW - camL)) / 2;
-  const by = Math.max(0, -g.arenaHalfH - camT) + 240;
+  const by = Math.max(g.cam.padTop, g.cam.padTop - g.arenaHalfH - camT) + 240;
   const a = clamp(g.bannerT, 0, 1);
   ctx.save();
   ctx.globalAlpha = a;
@@ -1199,43 +1218,23 @@ function drawBanner(g: Game, ctx: CanvasRenderingContext2D, w: number, h: number
 // HUD
 // ---------------------------------------------------------------------------
 
-// HUD size presets (settings → HUD SIZE): a uniform scale on every indicator
-// plus an inset that pulls the whole layer in from the screen edges.
-const HUD_SIZES: Record<string, { scale: number; inset: number }> = {
-  default: { scale: 1, inset: 0 },
-  large: { scale: 1.25, inset: 8 },
-  huge: { scale: 1.5, inset: 16 },
-};
-
-// Vertical thickness (HUD-space px) of the top and bottom indicator bands —
-// used by the 'outside' anchor to seat each band in the margin beyond the arena.
-const HUD_TOP_BAND = 104;
-const HUD_BOTTOM_BAND = 92;
-
 /**
- * The screen-space rectangle the in-run HUD lays out against. Three modes
- * (settings → HUD POSITION):
- *  - 'screen'  : pinned to the viewport edges (classic).
- *  - 'inside'  : hugs the INSIDE of the visible play-area edges.
- *  - 'outside' : seats the top/bottom indicator bands in the dead-space just
- *                OUTSIDE the arena; falls back to the screen edges when the
- *                arena is as big as (or bigger than) the viewport.
- * Camera shake is excluded so the HUD never jitters.
+ * The screen-space rectangle the in-run HUD lays out against: the play area's
+ * on-screen rect expanded by one indicator band above and below, clamped to
+ * the canvas. On large screens the bands land in the natural margin around
+ * the arena; on small screens they land exactly in the space the camera
+ * reserves outside the world view (cam.padTop / hudBands) — either way the
+ * HUD sits OUTSIDE the play area. Camera shake is excluded so the HUD never
+ * jitters.
  */
 function hudBox(g: Game): { x0: number; y0: number; x1: number; y1: number } {
-  const vw = g.cam.viewW, vh = g.cam.viewH;
+  const vw = g.cam.screenW, vh = g.cam.screenH;
   const k = (HUD_SIZES[g.save.settings.hudSize] ?? HUD_SIZES.default).scale;
-  const camL = g.cam.x - vw / 2;
-  const camT = g.cam.y - vh / 2;
-  const aL = -g.arenaHalfW - camL, aT = -g.arenaHalfH - camT;
-  const aR = g.arenaHalfW - camL, aB = g.arenaHalfH - camT;
-  const mode = g.save.settings.hudAnchor ?? 'outside';
-  if (mode === 'screen') return { x0: 0, y0: 0, x1: vw, y1: vh };
-  if (mode === 'inside') {
-    return { x0: Math.max(0, aL), y0: Math.max(0, aT), x1: Math.min(vw, aR), y1: Math.min(vh, aB) };
-  }
-  // 'outside': push each band out past the arena edge into the margin, then
-  // clamp to the screen so nothing leaves the viewport.
+  const camL = g.cam.x - g.cam.viewW / 2;
+  const camT = g.cam.y - g.cam.viewH / 2;
+  const aL = -g.arenaHalfW - camL, aR = g.arenaHalfW - camL;
+  const aT = g.cam.padTop + (-g.arenaHalfH - camT);
+  const aB = g.cam.padTop + (g.arenaHalfH - camT);
   return {
     x0: clamp(aL, 0, vw),
     y0: clamp(aT - HUD_TOP_BAND * k, 0, vh),
@@ -1530,7 +1529,7 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
 function drawTouchUI(g: Game, ctx: CanvasRenderingContext2D): void {
   const inp = g.input;
   if (!inp.touchActive) return;
-  const h = g.cam.viewH;
+  const h = g.cam.screenH; // thumb zones are physical — full canvas
 
   ctx.save();
   // Move stick: anchored where the thumb landed; a faint hint circle otherwise

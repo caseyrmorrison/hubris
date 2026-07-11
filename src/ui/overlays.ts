@@ -578,11 +578,6 @@ export class UIManager {
         ['LARGE', () => st.hudSize === 'large', () => { st.hudSize = 'large'; }],
         ['HUGE', () => st.hudSize === 'huge', () => { st.hudSize = 'huge'; }],
       ]),
-      cycle('HUD position', [
-        ['OUTSIDE ARENA', () => st.hudAnchor === 'outside', () => { st.hudAnchor = 'outside'; }],
-        ['SCREEN EDGES', () => st.hudAnchor === 'screen', () => { st.hudAnchor = 'screen'; }],
-        ['INSIDE ARENA', () => st.hudAnchor === 'inside', () => { st.hudAnchor = 'inside'; }],
-      ]),
       cycle('Audio', [
         ['ON', () => !g.save.muted, () => { g.save.muted = false; g.audio.setMuted(false); }],
         ['MUTED', () => g.save.muted, () => { g.save.muted = true; g.audio.setMuted(true); }],
