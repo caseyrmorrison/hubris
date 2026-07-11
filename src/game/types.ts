@@ -86,7 +86,8 @@ export function emptyMods(): Mods {
   };
 }
 
-export type EnemyKind = 'shade' | 'skitter' | 'spitter' | 'brute' | 'cinder' | 'weaver' | 'reaver' | 'stalker' | 'boss';
+export type EnemyKind = 'shade' | 'skitter' | 'spitter' | 'brute' | 'cinder' | 'weaver' | 'reaver' | 'stalker'
+  | 'hexer' | 'juggernaut' | 'blinker' | 'boss';
 
 /** Elite affixes — elites from chamber 4 on roll one. */
 export type EliteMod = 'splitter' | 'warded' | 'burning' | null;
@@ -152,7 +153,7 @@ export interface BossState {
 
 export type CharacterId = 'warrior' | 'archer' | 'mage';
 
-export type ProjKind = 'dart' | 'chakram' | 'spit' | 'bossOrb' | 'soul' | 'mirror' | 'arrow' | 'orb' | 'spear';
+export type ProjKind = 'dart' | 'chakram' | 'spit' | 'bossOrb' | 'soul' | 'mirror' | 'arrow' | 'orb' | 'spear' | 'hex';
 
 export interface Projectile {
   kind: ProjKind;

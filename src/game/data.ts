@@ -29,6 +29,10 @@ export const ENEMY_DEFS: Record<Exclude<EnemyKind, 'boss'>, EnemyDef> = {
   weaver:  { hp: 34,  speed: 62,  touchDamage: 9,  radius: 15, xp: 3, gold: 3, color: '#ff6b9d', sides: 7, weight: 34,  minChamber: 6 },
   reaver:  { hp: 24,  speed: 128, touchDamage: 12, radius: 13, xp: 3, gold: 2, color: '#ff5a3c', sides: 4, weight: 42,  minChamber: 3 },
   stalker: { hp: 32,  speed: 120, touchDamage: 11, radius: 12, xp: 3, gold: 3, color: '#ff2e63', sides: 3, weight: 30,  minChamber: 5 },
+  // Late-run variety: the second half of the descent fields new threats
+  hexer:      { hp: 44,  speed: 58,  touchDamage: 10, radius: 15, xp: 4, gold: 3, color: '#9d5cff', sides: 8, weight: 28, minChamber: 8 },
+  juggernaut: { hp: 240, speed: 30,  touchDamage: 22, radius: 32, xp: 9, gold: 7, color: '#d4a24e', sides: 9, weight: 14, minChamber: 10 },
+  blinker:    { hp: 34,  speed: 105, touchDamage: 13, radius: 12, xp: 4, gold: 3, color: '#55f2d6', sides: 5, weight: 26, minChamber: 12 },
 };
 
 /** Chamber scaling multipliers (c = 1-based chamber index). */

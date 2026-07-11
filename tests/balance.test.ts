@@ -732,6 +732,40 @@ describe('expanded mirror of hubris', () => {
     expect(g.autoLevelReward).toBeNull();
   });
 
+  it('late-run enemies: hexer casts seekers, blinker teleports, juggernaut resists knockback', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(12);
+    g.phase = 'combat';
+    g.quota = 1e9;
+    g.enemies = [];
+    g.weapons = [];
+    g.stats.critChance = 0;
+
+    // Hexer: parks at range and launches a homing hex orb
+    const hexer = g.spawnEnemyAt({ x: g.player.x + 420, y: g.player.y }, false, 'hexer');
+    hexer.spawnT = 0; hexer.atkT = 0.01;
+    stepFrames(g, input, 30);
+    expect(g.projectiles.some((pr) => pr.kind === 'hex' && !pr.friendly)).toBe(true);
+    g.enemies = []; g.projectiles = [];
+
+    // Blinker: winds up, then reappears near the player's flank
+    const blinker = g.spawnEnemyAt({ x: g.player.x + 800, y: g.player.y }, false, 'blinker');
+    blinker.spawnT = 0; blinker.atkT = 0.01;
+    stepFrames(g, input, 60); // enough for the 0.35s windup + blink
+    const bd = Math.hypot(blinker.x - g.player.x, blinker.y - g.player.y);
+    expect(bd).toBeLessThan(300); // crossed ~800px instantly via the blink
+    g.enemies = [];
+
+    // Juggernaut: the same shove barely moves it compared to a shade
+    const jugg = g.spawnEnemyAt({ x: 0, y: -300 }, false, 'juggernaut');
+    const shade = g.spawnEnemyAt({ x: 0, y: 300 }, false, 'shade');
+    jugg.spawnT = 0; shade.spawnT = 0;
+    g.dealDamage(jugg, 1, { source: 'strike', kx: 500, ky: 0 });
+    g.dealDamage(shade, 1, { source: 'strike', kx: 500, ky: 0 });
+    expect(Math.abs(jugg.vx)).toBeLessThan(Math.abs(shade.vx) * 0.25);
+  });
+
   it('dev mode hooks: god mode blocks all damage, devMods stack into stats', () => {
     const { g } = createHeadlessGame();
     g.startRun();

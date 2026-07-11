@@ -913,6 +913,77 @@ function updateEnemies(g: Game, dt: number): void {
         sx = ldx / ld; sy = ldy / ld;
         break;
       }
+      case 'hexer': {
+        // Warlock at the rim: keeps far out and lobs slow SEEKING hexes —
+        // ignore them and they curve home; kite or kill the caster.
+        if (dist > 480) { sx = nx; sy = ny; }
+        else if (dist < 360) { sx = -nx * 0.8; sy = -ny * 0.8; }
+        else { sx = -ny * 0.5; sy = nx * 0.5; }
+        e.atkT -= dt;
+        if (e.atkT <= 0.36 && dist >= 640) e.atkT = 0.36;
+        if (e.atkT <= 0 && dist < 640) {
+          e.atkT = rand(3.2, 4.0);
+          const a = Math.atan2(dy, dx);
+          g.projectiles.push(makeProj('hex', e.x, e.y,
+            Math.cos(a) * 150, Math.sin(a) * 150, 11, e.touchDamage, false, 0, 0));
+          g.audio.play('nova');
+        }
+        break;
+      }
+      case 'juggernaut': {
+        // Walking siege engine: shrugs off knockback (see dealDamage) and
+        // slams the ground when close — a telegraphed ring you must leave.
+        if (e.windup >= 0) {
+          e.windup -= dt;
+          if (e.windup <= 0) {
+            e.windup = -1;
+            const R = 130;
+            g.particles.burst(e.x, e.y, '#d4a24e', 26, { speed: 320, size: 7, life: 0.5 });
+            g.shockwaves.push({ x: e.x, y: e.y, r: 12, maxR: R, life: 0.32, color: '#d4a24e' });
+            g.cam.shake(6);
+            g.audio.play('nova');
+            if (Math.hypot(p.x - e.x, p.y - e.y) < R + PLAYER_RADIUS) {
+              g.hurtPlayer(e.touchDamage * 1.5, e.x, e.y);
+            }
+          }
+        } else {
+          sx = nx; sy = ny;
+          e.atkT -= dt;
+          if (e.atkT <= 0 && dist < 150) {
+            e.atkT = rand(2.8, 3.6);
+            e.windup = 0.6;
+            g.telegraphs.push({
+              kind: 'circle', x: e.x, y: e.y, x2: e.x, y2: e.y,
+              radius: 130, t: 0.6, maxT: 0.6,
+            });
+          }
+        }
+        break;
+      }
+      case 'blinker': {
+        // Ambusher: flashes bright, then blinks to your flank and rushes in.
+        if (e.windup >= 0) {
+          e.windup -= dt;
+          if (e.windup <= 0) {
+            e.windup = -1;
+            g.particles.burst(e.x, e.y, '#55f2d6', 14, { speed: 240, size: 5, life: 0.4 });
+            const a = rand(TAU);
+            const r = rand(150, 220);
+            e.x = clamp(p.x + Math.cos(a) * r, -g.arenaHalfW + 20, g.arenaHalfW - 20);
+            e.y = clamp(p.y + Math.sin(a) * r, -g.arenaHalfH + 20, g.arenaHalfH - 20);
+            g.particles.burst(e.x, e.y, '#55f2d6', 14, { speed: 240, size: 5, life: 0.4 });
+            g.audio.play('dash');
+          }
+        } else {
+          sx = nx; sy = ny;
+          e.atkT -= dt;
+          if (e.atkT <= 0 && dist > 240) {
+            e.atkT = rand(2.4, 3.2);
+            e.windup = 0.35; // the bright tell before it vanishes
+          }
+        }
+        break;
+      }
       default:
         sx = nx; sy = ny;
     }
@@ -1293,6 +1364,15 @@ function updateProjectiles(g: Game, dt: number): void {
       pr.vx = Math.cos(na) * sp;
       pr.vy = Math.sin(na) * sp;
       if (pr.life > 4.5) dead = true;
+    } else if (pr.kind === 'hex') {
+      // Hexer's slow seeker: lazy turn rate — outrun it or break its line
+      const want = Math.atan2(p.y - pr.y, p.x - pr.x);
+      const cur = Math.atan2(pr.vy, pr.vx);
+      const na = cur + clamp(angleDiff(cur, want), -1.5 * dt, 1.5 * dt);
+      const sp = Math.hypot(pr.vx, pr.vy);
+      pr.vx = Math.cos(na) * sp;
+      pr.vy = Math.sin(na) * sp;
+      if (pr.life > 5) dead = true;
     } else if (pr.kind === 'mirror') {
       if (pr.life > 1.6) dead = true;
     } else if (pr.kind === 'arrow') {

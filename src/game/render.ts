@@ -630,7 +630,8 @@ function drawEnemies(g: Game, ctx: CanvasRenderingContext2D): void {
     // Body polygon (boss only flickers its rim — it is hit near-constantly)
     const sides = e.kind === 'boss' ? 8 : def!.sides;
     const rot = e.wobble * (e.kind === 'skitter' ? 1.4 : 0.4);
-    const winding = (e.kind === 'brute' || e.kind === 'reaver') && e.windup >= 0;
+    const winding = (e.kind === 'brute' || e.kind === 'reaver' || e.kind === 'juggernaut'
+      || e.kind === 'blinker') && e.windup >= 0;
     const flashing = (e.flash > 0 && (e.kind !== 'boss' || e.flash > 0.07)) || winding;
     ctx.fillStyle = flashing ? (winding ? '#ff8f8f' : '#ffffff') : shade(color, 0.42);
     ctx.strokeStyle = e.flash > 0 || winding ? '#ffffff' : color;
@@ -1060,6 +1061,19 @@ function drawProjectiles(g: Game, ctx: CanvasRenderingContext2D): void {
       ctx.beginPath();
       ctx.arc(sx, sy, 4.5, 0, TAU);
       ctx.fill();
+    } else if (pr.kind === 'hex') {
+      // Hexer's seeker: a fat sigil-orb with a menacing slow pulse
+      const pulse = 0.75 + Math.sin(pr.life * 9) * 0.2;
+      drawGlow(ctx, '#9d5cff', sx, sy, 22 * pulse, 0.9);
+      ctx.fillStyle = '#c9a4ff';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 6, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(157,92,255,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 10 * pulse, 0, TAU);
+      ctx.stroke();
     } else if (pr.kind === 'soul') {
       drawGlow(ctx, '#b79cff', sx, sy, 17, 0.85);
       ctx.fillStyle = '#e9defc';

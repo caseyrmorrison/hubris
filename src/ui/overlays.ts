@@ -406,6 +406,9 @@ export class UIManager {
 
   private renderMirror(): void {
     const g = this.g;
+    // Re-rendering after a purchase must not yank the list back to the top —
+    // remember where the player was scrolled to and put them right back.
+    const prevScroll = this.mirror.querySelector('.panel')?.scrollTop ?? this.mirror.scrollTop;
     this.mirror.innerHTML = '';
     const panel = el('div', 'panel mirror');
     panel.append(el('h2', 'panel-title', 'MIRROR OF HUBRIS'));
@@ -433,6 +436,9 @@ export class UIManager {
     }
     panel.append(grid, this.backToMenu(this.mirror));
     this.mirror.append(panel);
+    // Restore the scroll position (whichever container actually scrolls)
+    panel.scrollTop = prevScroll;
+    this.mirror.scrollTop = prevScroll;
   }
 
   private renderUnlocks(): void {

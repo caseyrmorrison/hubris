@@ -856,7 +856,8 @@ export class Game {
       dmg *= this.stats.critMult;
     }
     if (!e.bossState && (opts.kx || opts.ky)) {
-      const kb = 1 + this.mods.knockbackPct;
+      // Juggernauts are walking siege engines — knockback barely moves them
+      const kb = (1 + this.mods.knockbackPct) * (e.kind === 'juggernaut' ? 0.15 : 1);
       e.vx += (opts.kx ?? 0) * kb;
       e.vy += (opts.ky ?? 0) * kb;
     }
