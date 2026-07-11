@@ -28,12 +28,13 @@ export function render(g: Game, ctx: CanvasRenderingContext2D): void {
   if (g.state === 'run') {
     drawArena(g, ctx);
     drawPatches(g, ctx);
-    drawDoors(g, ctx);
     drawTowers(g, ctx);
     drawChests(g, ctx);
     drawTraps(g, ctx);
     drawPillars(g, ctx);
+    drawDoors(g, ctx); // above the pillars — a door must never hide behind cover
     drawTelegraphs(g, ctx);
+    drawShockRings(g, ctx);
     drawPickups(g, ctx);
     drawEnemies(g, ctx);
     drawPlayer(g, ctx);
@@ -560,8 +561,40 @@ function drawPickups(g: Game, ctx: CanvasRenderingContext2D): void {
 
 function drawEnemies(g: Game, ctx: CanvasRenderingContext2D): void {
   const p = g.player;
+  // Collect the visible set once — both passes reuse it.
+  const visible: Enemy[] = [];
   for (const e of g.enemies) {
-    if (e.hp <= 0 || !g.cam.isVisible(e.x, e.y, e.radius + 40)) continue;
+    if (e.hp > 0 && g.cam.isVisible(e.x, e.y, e.radius + 40)) visible.push(e);
+  }
+  // In a true horde, per-grunt glow is invisible noise but real GPU cost —
+  // keep glows for the notable silhouettes only.
+  const dense = visible.length > 110;
+
+  // Pass 1: every glow in ONE additive block (composite-mode switches and
+  // save/restore pairs per enemy were the hot path with 200+ on screen).
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const e of visible) {
+    const boss = e.kind === 'boss';
+    if (e.spawnT > 0) continue;
+    if (dense && !boss && !e.elite) continue;
+    const sx = g.cam.toScreenX(e.x);
+    const sy = g.cam.toScreenY(e.y);
+    const def = boss ? null : ENEMY_DEFS[e.kind as keyof typeof ENEMY_DEFS];
+    const color = boss ? BOSSES[e.bossState!.variant].color : def!.color;
+    const r = e.radius * (1 + Math.sin(e.wobble) * 0.05);
+    if (e.elite) {
+      drawGlow(ctx, e.modifier ? ELITE_MOD_COLOR[e.modifier] : '#f0c75e', sx, sy, r * 2.2, 0.4);
+    }
+    drawGlow(ctx, color, sx, sy, r * 1.7, boss ? 0.5 : 0.3);
+    if (boss && e.bossState!.variant === 'sovereign') {
+      drawGlow(ctx, color, sx, sy, r * 2.2, 0.35 + Math.sin(e.wobble * 3) * 0.12);
+    }
+  }
+  ctx.restore();
+
+  // Pass 2: bodies and detail
+  for (const e of visible) {
     const sx = g.cam.toScreenX(e.x);
     const sy = g.cam.toScreenY(e.y);
     const def = e.kind === 'boss' ? null : ENEMY_DEFS[e.kind as keyof typeof ENEMY_DEFS];
@@ -573,13 +606,9 @@ function drawEnemies(g: Game, ctx: CanvasRenderingContext2D): void {
     ctx.save();
     if (rising) ctx.globalAlpha = 0.5 + scale * 0.5;
 
-    // Elite aura (affix-tinted)
+    // Elite aura ring (affix-tinted; its glow rides pass 1)
     if (e.elite) {
       const auraColor = e.modifier ? ELITE_MOD_COLOR[e.modifier] : '#f0c75e';
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      drawGlow(ctx, auraColor, sx, sy, r * 2.2, 0.4);
-      ctx.restore();
       ctx.strokeStyle = withAlpha(auraColor, 0.8);
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -593,12 +622,6 @@ function drawEnemies(g: Game, ctx: CanvasRenderingContext2D): void {
         ctx.stroke();
       }
     }
-
-    // Soft glow
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    drawGlow(ctx, color, sx, sy, r * 1.7, e.kind === 'boss' ? 0.5 : 0.3);
-    ctx.restore();
 
     // Body polygon (boss only flickers its rim — it is hit near-constantly)
     const sides = e.kind === 'boss' ? 8 : def!.sides;
@@ -634,11 +657,7 @@ function drawEnemies(g: Game, ctx: CanvasRenderingContext2D): void {
 
     if (e.kind === 'boss') {
       if (e.bossState!.variant === 'sovereign') {
-        // The Archon: a full crown of spikes + a pulsing wrathful aura
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        drawGlow(ctx, color, sx, sy, r * 2.2, 0.35 + Math.sin(e.wobble * 3) * 0.12);
-        ctx.restore();
+        // The Archon: a full crown of spikes (its wrathful aura rides pass 1)
         ctx.fillStyle = color;
         for (let i = 0; i < 9; i++) {
           const a = (i / 9) * TAU + e.wobble * 0.3;
@@ -1092,6 +1111,29 @@ function drawShockwaves(g: Game, ctx: CanvasRenderingContext2D): void {
   ctx.restore();
 }
 
+function drawShockRings(g: Game, ctx: CanvasRenderingContext2D): void {
+  if (g.shockRings.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of g.shockRings) {
+    const cx = g.cam.toScreenX(s.x), cy = g.cam.toScreenY(s.y);
+    const fade = clamp(1 - s.r / s.maxR, 0.2, 1);
+    // Soft outer bloom
+    ctx.strokeStyle = withAlpha(s.color, 0.2 * fade);
+    ctx.lineWidth = s.thickness * 1.8;
+    ctx.beginPath(); ctx.arc(cx, cy, s.r, 0, TAU); ctx.stroke();
+    // Main body of the wave
+    ctx.strokeStyle = withAlpha(s.color, 0.6 * fade);
+    ctx.lineWidth = s.thickness;
+    ctx.beginPath(); ctx.arc(cx, cy, s.r, 0, TAU); ctx.stroke();
+    // Bright leading crest — the edge you dash through
+    ctx.strokeStyle = withAlpha('#ffffff', 0.85 * fade);
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx, cy, s.r + s.thickness / 2, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawDamageNumbers(g: Game, ctx: CanvasRenderingContext2D): void {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1131,6 +1173,15 @@ function drawVignette(ctx: CanvasRenderingContext2D, w: number, h: number): void
 
 function drawBanner(g: Game, ctx: CanvasRenderingContext2D, w: number, h: number): void {
   if (g.bannerT <= 0) return;
+  // Anchor to the visible play area, matching the HUD — mixed anchoring made
+  // the banner collide with HUD text whenever the arena's top edge was on
+  // screen.
+  const camL = g.cam.x - w / 2;
+  const camT = g.cam.y - h / 2;
+  // y=240: below the top-wall door row & its labels (~130) and clear of the
+  // massacre readout band (~168-212 in HUD space).
+  const bx = (Math.max(0, -g.arenaHalfW - camL) + Math.min(w, g.arenaHalfW - camL)) / 2;
+  const by = Math.max(0, -g.arenaHalfH - camT) + 240;
   const a = clamp(g.bannerT, 0, 1);
   ctx.save();
   ctx.globalAlpha = a;
@@ -1138,9 +1189,9 @@ function drawBanner(g: Game, ctx: CanvasRenderingContext2D, w: number, h: number
   ctx.textBaseline = 'middle';
   ctx.font = `700 34px ${SERIF}`;
   ctx.fillStyle = '#0a0d18';
-  ctx.fillText(g.bannerText, w / 2 + 2, 142);
+  ctx.fillText(g.bannerText, bx + 2, by + 2);
   ctx.fillStyle = g.bannerColor;
-  ctx.fillText(g.bannerText, w / 2, 140);
+  ctx.fillText(g.bannerText, bx, by);
   ctx.restore();
 }
 
@@ -1148,9 +1199,34 @@ function drawBanner(g: Game, ctx: CanvasRenderingContext2D, w: number, h: number
 // HUD
 // ---------------------------------------------------------------------------
 
+// HUD size presets (settings → HUD SIZE): a uniform scale on every indicator
+// plus an inset that pulls the whole layer in from the screen edges.
+const HUD_SIZES: Record<string, { scale: number; inset: number }> = {
+  default: { scale: 1, inset: 0 },
+  large: { scale: 1.25, inset: 8 },
+  huge: { scale: 1.5, inset: 16 },
+};
+
 function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
-  const w = g.cam.viewW;
-  const h = g.cam.viewH;
+  const size = HUD_SIZES[g.save.settings.hudSize] ?? HUD_SIZES.default;
+  const k = size.scale;
+  // Anchor the HUD to the visible play area. On screens larger than the
+  // arena, the floor doesn't fill the window — the HUD hugs the arena's
+  // edges instead of floating out in the void beyond them.
+  // (shake excluded — the HUD must not jitter with the camera)
+  const camL = g.cam.x - g.cam.viewW / 2;
+  const camT = g.cam.y - g.cam.viewH / 2;
+  const ax0 = Math.max(0, -g.arenaHalfW - camL);
+  const ay0 = Math.max(0, -g.arenaHalfH - camT);
+  const ax1 = Math.min(g.cam.viewW, g.arenaHalfW - camL);
+  const ay1 = Math.min(g.cam.viewH, g.arenaHalfH - camT);
+  ctx.save();
+  ctx.translate(ax0 + size.inset, ay0 + size.inset);
+  ctx.scale(k, k);
+  // Effective view size in HUD-space: everything below lays out against these,
+  // so right/bottom-anchored elements stay inside the play area at any scale.
+  const w = (ax1 - ax0 - size.inset * 2) / k;
+  const h = (ay1 - ay0 - size.inset * 2) / k;
   const p = g.player;
   const s = g.stats;
 
@@ -1158,39 +1234,45 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
 
   // --- HP bar (top-left) ---
   const hpW = 250;
-  roundRect(ctx, 18, 18, hpW, 20, 5);
+  roundRect(ctx, 18, 18, hpW, 26, 6);
   ctx.fillStyle = 'rgba(8,10,20,0.75)';
   ctx.fill();
   const hpPct = clamp(p.hp / s.maxHP, 0, 1);
   if (hpPct > 0) {
-    roundRect(ctx, 20, 20, (hpW - 4) * hpPct, 16, 4);
+    roundRect(ctx, 20, 20, (hpW - 4) * hpPct, 22, 5);
     ctx.fillStyle = hpPct > 0.5 ? '#3ddc97' : hpPct > 0.25 ? '#f0c75e' : '#ee4266';
     ctx.fill();
   }
-  ctx.font = `700 12px ${SANS}`;
+  ctx.font = `700 13px ${SANS}`;
   ctx.fillStyle = '#eef2ff';
   ctx.textAlign = 'center';
-  ctx.fillText(`${Math.ceil(p.hp)} / ${Math.round(s.maxHP)}`, 18 + hpW / 2, 28);
+  ctx.fillText(`${Math.ceil(p.hp)} / ${Math.round(s.maxHP)}`, 18 + hpW / 2, 31);
 
   // Mana shield bar (mage): thin cyan strip under the HP bar
   const shieldCap = g.maxShield();
   if (shieldCap > 0) {
-    roundRect(ctx, 18, 40, hpW, 6, 3);
+    roundRect(ctx, 18, 48, hpW, 6, 3);
     ctx.fillStyle = 'rgba(8,10,20,0.75)';
     ctx.fill();
     const sfrac = clamp(p.shield / shieldCap, 0, 1);
     if (sfrac > 0) {
-      roundRect(ctx, 19, 41, (hpW - 2) * sfrac, 4, 2);
+      roundRect(ctx, 19, 49, (hpW - 2) * sfrac, 4, 2);
       ctx.fillStyle = '#8fdcff';
       ctx.fill();
     }
   }
 
+  // Level, tucked under the health bar's right end
+  ctx.font = `800 13px ${SANS}`;
+  ctx.fillStyle = '#eef2ff';
+  ctx.textAlign = 'right';
+  ctx.fillText(`LV ${g.level}`, 18 + hpW, 62);
+
   // Dash pips
   for (let i = 0; i < s.dashCharges; i++) {
     const x = 26 + i * 20;
     ctx.beginPath();
-    ctx.arc(x, 52, 6, 0, TAU);
+    ctx.arc(x, 62, 6, 0, TAU);
     if (i < p.charges) {
       ctx.fillStyle = '#ffe08a';
       ctx.fill();
@@ -1199,8 +1281,8 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
       ctx.fill();
       const frac = clamp(p.rechargeT / s.dashRecharge, 0, 1);
       ctx.beginPath();
-      ctx.moveTo(x, 52);
-      ctx.arc(x, 52, 6, -Math.PI / 2, -Math.PI / 2 + frac * TAU);
+      ctx.moveTo(x, 62);
+      ctx.arc(x, 62, 6, -Math.PI / 2, -Math.PI / 2 + frac * TAU);
       ctx.closePath();
       ctx.fillStyle = 'rgba(255,224,138,0.7)';
       ctx.fill();
@@ -1215,7 +1297,7 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
     ctx.font = `14px ${SANS}`;
     ctx.fillStyle = '#ffe08a';
     ctx.textAlign = 'left';
-    ctx.fillText('☥', 26 + s.dashCharges * 20 + 6 + i * 14, 52);
+    ctx.fillText('☥', 26 + s.dashCharges * 20 + 6 + i * 14, 62);
   }
 
   // Active obelisk buffs with remaining seconds
@@ -1230,20 +1312,20 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
   for (const b of g.buffs) {
     const meta = BUFF_CHIP[b.kind];
     if (!meta) continue;
-    roundRect(ctx, chipX, 66, 52, 20, 10);
+    roundRect(ctx, chipX, 76, 52, 20, 10);
     ctx.fillStyle = 'rgba(8,10,20,0.75)';
     ctx.fill();
     ctx.strokeStyle = withAlpha(meta.color, b.t < 5 ? (Math.sin(performance.now() / 120) > 0 ? 0.9 : 0.3) : 0.7);
     ctx.lineWidth = 1.5;
-    roundRect(ctx, chipX, 66, 52, 20, 10);
+    roundRect(ctx, chipX, 76, 52, 20, 10);
     ctx.stroke();
     ctx.fillStyle = meta.color;
     ctx.font = `12px ${SANS}`;
     ctx.textAlign = 'left';
-    ctx.fillText(meta.glyph, chipX + 7, 77);
+    ctx.fillText(meta.glyph, chipX + 7, 87);
     ctx.font = `700 11px ${SANS}`;
     ctx.fillStyle = '#c9d2f0';
-    ctx.fillText(`${Math.ceil(b.t)}s`, chipX + 23, 77);
+    ctx.fillText(`${Math.ceil(b.t)}s`, chipX + 23, 87);
     chipX += 58;
   }
 
@@ -1319,7 +1401,7 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
     ctx.textAlign = 'center';
     const fade = clamp(g.massacreT / MASSACRE_WINDOW, 0, 1);
     const pop = 1 + (1 - fade) * 0.05;
-    const cy = 96;
+    const cy = 184; // its own band, below the banner line (~140)
     // Label + kill count
     ctx.font = `800 ${Math.round(26 * pop)}px ${SERIF}`;
     ctx.fillStyle = '#0a0d18';
@@ -1345,30 +1427,35 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
 
   // --- XP bar (bottom, full width) ---
   const xw = w - 36;
-  roundRect(ctx, 18, h - 26, xw, 12, 4);
+  roundRect(ctx, 18, h - 32, xw, 18, 5);
   ctx.fillStyle = 'rgba(8,10,20,0.8)';
   ctx.fill();
   const xpPct = clamp(g.xp / g.xpNeeded, 0, 1);
   if (xpPct > 0) {
-    roundRect(ctx, 20, h - 24, (xw - 4) * xpPct, 8, 3);
+    roundRect(ctx, 20, h - 30, (xw - 4) * xpPct, 14, 4);
     const grad = ctx.createLinearGradient(20, 0, 20 + xw, 0);
     grad.addColorStop(0, '#55d6f5');
     grad.addColorStop(1, '#c17bff');
     ctx.fillStyle = grad;
     ctx.fill();
   }
-  ctx.textAlign = 'right';
-  ctx.font = `800 13px ${SANS}`;
-  ctx.fillStyle = '#eef2ff';
-  ctx.fillText(`LV ${g.level}`, w - 24, h - 40);
 
-  // --- Boons (bottom-left, above XP bar) ---
-  let bx = 26;
+  // Banked Awakening level-ups: a pulsing claim badge above the XP bar
+  if (g.bankedLevelUps > 0) {
+    const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 280);
+    ctx.textAlign = 'right';
+    ctx.font = `800 13px ${SANS}`;
+    ctx.fillStyle = withAlpha('#ffe08a', 0.5 + 0.5 * pulse);
+    ctx.fillText(`✦ ${g.bankedLevelUps} LEVEL UP${g.bankedLevelUps > 1 ? 'S' : ''} BANKED — L`, w - 24, h - 44);
+  }
+
+  // --- Boon + weapon loadout: two rows stacked center, above the XP bar ---
+  let bx = w / 2 - (g.boons.length * 24) / 2 + 12;
   for (const owned of g.boons) {
     const def = boonDef(owned.id);
     const col = def.duo ? '#f0c75e' : GOD_COLOR[def.god];
     ctx.beginPath();
-    ctx.arc(bx, h - 48, 9, 0, TAU);
+    ctx.arc(bx, h - 82, 9, 0, TAU);
     ctx.fillStyle = 'rgba(8,10,20,0.8)';
     ctx.fill();
     ctx.strokeStyle = def.duo ? '#f0c75e' : RARITY_COLOR[owned.rarity];
@@ -1377,18 +1464,16 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = col;
     ctx.font = `800 10px ${SANS}`;
     ctx.textAlign = 'center';
-    ctx.fillText(def.duo ? '✦' : godGlyph(def.god), bx, h - 48);
+    ctx.fillText(def.duo ? '✦' : godGlyph(def.god), bx, h - 82);
     bx += 24;
   }
 
-  // --- Weapons (bottom-right, above XP bar) ---
-  let wx = w - 34;
-  for (let i = g.weapons.length - 1; i >= 0; i--) {
-    const ow = g.weapons[i];
+  let wx = w / 2 - (g.weapons.length * 30) / 2 + 15;
+  for (const ow of g.weapons) {
     const def = weaponDef(ow.id);
     const transcended = ow.level >= WEAPON_MAX_LEVEL;
     ctx.beginPath();
-    ctx.arc(wx, h - 52, 11, 0, TAU);
+    ctx.arc(wx, h - 56, 11, 0, TAU);
     ctx.fillStyle = 'rgba(8,10,20,0.8)';
     ctx.fill();
     ctx.strokeStyle = transcended ? '#ffe08a' : def.color;
@@ -1397,11 +1482,11 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = transcended ? '#ffe08a' : def.color;
     ctx.font = `13px ${SANS}`;
     ctx.textAlign = 'center';
-    ctx.fillText(def.icon, wx, h - 51);
+    ctx.fillText(def.icon, wx, h - 55);
     ctx.font = `700 9px ${SANS}`;
     ctx.fillStyle = '#c9d2f0';
-    ctx.fillText(transcended ? '★' : `${ow.level}`, wx, h - 36);
-    wx -= 30;
+    ctx.fillText(transcended ? '★' : `${ow.level}`, wx, h - 40);
+    wx += 30;
   }
 
   // Build panel hint
@@ -1409,6 +1494,8 @@ function drawHUD(g: Game, ctx: CanvasRenderingContext2D): void {
   ctx.font = `600 11px ${SANS}`;
   ctx.fillStyle = 'rgba(201,210,240,0.4)';
   ctx.fillText('TAB build · ESC pause', 22, h - 44);
+
+  ctx.restore(); // undo HUD scale/inset
 }
 
 /** Virtual sticks + dash button, only once the player has touched the screen. */

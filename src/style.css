@@ -380,13 +380,14 @@ html, body {
 /* ---------- toasts ---------- */
 
 .toasts {
+  /* Bottom-left, stacking upward: keeps pickup/buff chatter away from the
+     chamber label, banners, and massacre readout crowding the top. */
   position: absolute;
-  top: 84px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 112px;
+  left: 22px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-direction: column-reverse;
+  align-items: flex-start;
   gap: 6px;
   pointer-events: none;
 }
@@ -400,8 +401,8 @@ html, body {
   letter-spacing: 0.5px;
   animation: toast-in 0.25s ease, toast-out 0.4s ease 2s forwards;
 }
-@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
-@keyframes toast-out { to { opacity: 0; transform: translateY(-6px); } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(6px); } }
 
 /* scrollbars */
 ::-webkit-scrollbar { width: 8px; }

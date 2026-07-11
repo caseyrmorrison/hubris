@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 import { describe, expect, it } from 'vitest';
 import { createHeadlessGame, grantStrongBuild, runBot, stepFrames } from '../src/testkit';
-import { MASSACRE_WINDOW as MASSACRE_WINDOW_S, WEAPON_DEFS, isBossChamber, weaponUnlocked } from '../src/game/data';
+import { MASSACRE_WINDOW as MASSACRE_WINDOW_S, WEAPON_DEFS, boonDef, isBossChamber, pillarCountRange, weaponUnlocked } from '../src/game/data';
 import { defaultSave } from '../src/game/meta';
 
 describe('bracket damage math', () => {
@@ -229,6 +229,15 @@ describe('save persistence', () => {
     expect(importSave('definitely not base64!!!')).toBeNull();
     expect(importSave(btoa('{"foo":1}'))).toBeNull();
     expect(importSave(btoa('[1,2,3]'))).toBeNull();
+  });
+
+  it('old saves without hudSize migrate to the default HUD size', async () => {
+    const { exportSave, importSave } = await import('../src/game/meta');
+    const s = defaultSave() as unknown as { settings: Record<string, unknown> };
+    delete s.settings.hudSize; // a pre-hudSize save code
+    const back = importSave(exportSave(s as never))!;
+    expect(back).not.toBeNull();
+    expect(back.settings.hudSize).toBe('default');
   });
 
   it('wipeSave restores factory defaults', () => {
@@ -549,18 +558,130 @@ describe('expanded mirror of hubris', () => {
     expect(g.player.hp).toBeCloseTo(92);   // floored at 1
   });
 
-  it('awakening and deep pockets shape the run start', () => {
+  it('awakening banks its level-ups instead of prompting at the door', () => {
     const { g } = createHeadlessGame();
     g.save.mirror = { awakening: 2, pockets: 3 };
     g.startRun();
     expect(g.level).toBe(3);               // 1 + 2 ranks
     expect(g.gold).toBe(150);              // 50 * 3 ranks
-    // The 2 awakening level-ups auto-resolve into upgrades. They might stack
-    // onto the starting weapon or diversify — either way, total invested
-    // levels rise from the baseline of 1 (one Lv1 starting weapon) to 3.
-    const totalLevels = g.weapons.reduce((n, w) => n + w.level, 0)
+    // No interruption at run start: the picks sit banked, nothing invested yet
+    expect(g.bankedLevelUps).toBe(2);
+    expect(g.pendingLevelUps).toBe(0);
+    const invested = () => g.weapons.reduce((n, w) => n + w.level, 0)
       + Object.values(g.tomes).reduce((n, l) => n + l, 0);
-    expect(totalLevels).toBe(3);
+    expect(invested()).toBe(1);            // just the Lv1 starting weapon
+    // Claiming (the L key) delivers both picks
+    g.claimBankedLevelUps();
+    expect(g.bankedLevelUps).toBe(0);
+    expect(invested()).toBe(3);
+  });
+
+  it('the L key claims the awakening stash mid-run', () => {
+    const { g, input } = createHeadlessGame();
+    g.save.mirror = { awakening: 1 };
+    g.startRun();
+    expect(g.bankedLevelUps).toBe(1);
+    input.justPressed.add('KeyL');
+    stepFrames(g, input, 1);
+    expect(g.bankedLevelUps).toBe(0);
+  });
+
+  it('a boss dying while another overlay is open queues the legendary instead of swallowing it', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(5);
+    g.phase = 'combat';
+    const boss = g.enemies.find((e) => e.bossState)!;
+    g.setOverlayOpen(true);           // the real UI has a level-up panel open this frame
+    g.dealDamage(boss, 1e9, { source: 'strike' });
+    expect(g.boons.length).toBe(0);   // NOT silently picked behind the panel
+    expect(g.pendingLegendaries).toBe(1);
+    g.setOverlayOpen(false);          // the player finishes their level-up...
+    g.maybeOpenLegendary();           // ...and the UI drains the queue on close
+    expect(g.pendingLegendaries).toBe(0);
+    expect(g.boons.length).toBe(1);   // the legendary got its own moment
+    expect(boonDef(g.boons[0].id).legendary).toBe(true);
+  });
+
+  it('arrows no longer pierce by default; boon and mirror ranks earn it back', () => {
+    const { g } = createHeadlessGame();
+    g.startRun('archer');
+    expect(g.stats.pierce).toBe(0);          // no free pierce
+    g.boons.push({ id: 'rending', rarity: 'rare' }); // Rending Edge
+    g.save.mirror.piercing = 2;              // Piercing Fates ranks
+    g.recomputeStats();
+    expect(g.stats.pierce).toBe(2 + 2);      // round(1.5) + 2 mirror ranks
+  });
+
+  it('range, area, and projectile stats flow from boons and the mirror', () => {
+    const { g } = createHeadlessGame();
+    g.save.mirror = { reach: 3, quiver: 1 };
+    g.startRun();
+    expect(g.stats.range).toBeCloseTo(0.24);
+    expect(g.stats.area).toBeCloseTo(0.24);
+    expect(g.stats.projectiles).toBe(1);
+    g.boons.push({ id: 'farsight', rarity: 'epic' }, { id: 'swell', rarity: 'common' });
+    g.recomputeStats();
+    expect(g.stats.range).toBeCloseTo(0.24 + 0.12 * 2.25);
+    expect(g.stats.area).toBeCloseTo(0.24 + 0.12);
+    // Arsenal of Olympus legendary stacks another projectile
+    g.boons.push({ id: 'l_hermes2', rarity: 'epic' });
+    g.recomputeStats();
+    expect(g.stats.projectiles).toBe(2);
+  });
+
+  it("Charon offers 6 wares — 3 premium, priced far above the basics", () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    const items = g.genShopItems();
+    expect(items.length).toBe(6);
+    const basics = items.slice(0, 3).map((i) => i.cost);
+    const premium = items.slice(3).map((i) => i.cost);
+    // The reserve's cheapest ware beats the basics' priciest
+    expect(Math.min(...premium)).toBeGreaterThan(Math.max(...basics));
+    // Pantheon's Favor grants a guaranteed-epic boon
+    g.gold = 99999;
+    const pantheon = items.find((i) => i.id === 'pantheon')!;
+    expect(g.buyShopItem(pantheon)).toBe(true);
+    expect(g.boons.length).toBe(1);
+    expect(g.boons[0].rarity).toBe('epic');
+  });
+
+  it('slaying the Archon pays out and owes a legend for the descent', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(20);
+    g.phase = 'combat';
+    for (const b of g.enemies.filter((e) => e.bossState)) b.hp = b.maxHP * 0.05;
+    stepFrames(g, { justPressed: new Set() } as never, 0); // no-op, keep types happy
+    g.overlayOpen = false;
+    // Trigger the drop, then slay the Archon
+    g.update(1 / 60);
+    g.setOverlayOpen(false);
+    const archon = g.enemies.find((e) => e.bossState)!;
+    const ichor0 = g.ichorRun + g.save.ichor;
+    g.dealDamage(archon, 1e9, { source: 'strike' });
+    expect(g.save.wins).toBe(1);
+    expect(g.save.ichor + g.ichorRun).toBeGreaterThanOrEqual(ichor0 + 50); // the purse
+    expect(g.pendingLegendaries).toBeGreaterThan(0);  // a legend is owed...
+    const boons0 = g.boons.length;
+    g.continueEndless();                               // ...and claimed on continue
+    expect(g.pendingLegendaries).toBe(0);
+    expect(g.boons.length).toBe(boons0 + 1);
+  });
+
+  it('banked awakening picks fold into the first natural level-up', () => {
+    const { g } = createHeadlessGame();
+    g.save.mirror = { awakening: 2 };
+    g.startRun();
+    expect(g.bankedLevelUps).toBe(2);
+    const invested = () => g.weapons.reduce((n, w) => n + w.level, 0)
+      + Object.values(g.tomes).reduce((n, l) => n + l, 0);
+    g.gainXP(g.xpNeeded + 1);              // one natural level
+    // The natural pick and both banked picks resolve in one session
+    expect(g.bankedLevelUps).toBe(0);
+    expect(g.level).toBeGreaterThanOrEqual(4);
+    expect(invested()).toBeGreaterThanOrEqual(4);
   });
 
   it('council of gods adds a 4th boon offering', () => {
@@ -779,8 +900,10 @@ describe('twin bosses & legendaries (20-chamber run)', () => {
     expect(archon!.bossState!.variant).toBe('sovereign');
     expect(archon!.maxHP).toBeGreaterThan(trioHP); // a towering solo pool
     expect(g.save.wins).toBe(0);                    // NOT a win yet
-    // The arrival chipped the player even though they never got hit in combat
-    expect(g.player.hp).toBeLessThan(hpBefore);
+    // Far from the crater the landing impact whiffs — no free chip...
+    expect(g.player.hp).toBe(hpBefore);
+    // ...but a shockwave is now racing outward for the player to dash through
+    expect(g.shockRings.length).toBeGreaterThan(0);
     // Slaying the Archon wins the run
     g.dealDamage(archon!, 1e9, { source: 'strike' });
     expect(g.save.wins).toBe(1);
@@ -801,18 +924,78 @@ describe('twin bosses & legendaries (20-chamber run)', () => {
     expect(g.save.wins).toBe(0);
   });
 
-  it('the arrival hit ignores dodge i-frames (it cannot be dodged)', () => {
+  it('the arrival shockwave chips a flat-footed player as it sweeps over', () => {
     const { g, input } = createHeadlessGame();
     g.startRun();
     g.setupChamber(20);
     g.phase = 'combat';
+    g.sovereignSpawned = true;   // isolate the ring from the Archon's own attacks
+    g.enemies = [];
+    g.weapons = [];
+    g.player.x = 0; g.player.y = 0;
     g.player.hp = g.stats.maxHP;
-    g.player.dashT = 0.16;   // mid-dash: normally invulnerable
-    g.player.invulnT = 1;    // and mid mercy window
+    g.player.invulnT = 0; g.player.dashT = 0;
     const hp0 = g.player.hp;
-    for (const b of g.enemies.filter((e) => e.bossState)) b.hp = b.maxHP * 0.05;
-    stepFrames(g, input, 2);
-    expect(g.player.hp).toBeLessThan(hp0); // chipped despite the i-frames
+    g.shockRings.push({ x: 0, y: 0, r: 20, maxR: 400, speed: 200, thickness: 40, damage: 40, color: '#fff', resolved: false });
+    stepFrames(g, input, 1);
+    expect(g.player.hp).toBeLessThan(hp0); // stood in the wave, took the hit
+  });
+
+  it('dashing as the shockwave arrives slips it for no damage', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(20);
+    g.phase = 'combat';
+    g.sovereignSpawned = true;
+    g.enemies = [];
+    g.weapons = [];
+    g.player.x = 0; g.player.y = 0;
+    g.player.hp = g.stats.maxHP;
+    g.player.invulnT = 0;
+    g.player.dashT = 0.2;        // mid-dash the instant the wave reaches us
+    const hp0 = g.player.hp;
+    g.shockRings.push({ x: 0, y: 0, r: 20, maxR: 400, speed: 200, thickness: 40, damage: 40, color: '#fff', resolved: false });
+    stepFrames(g, input, 1);
+    expect(g.player.hp).toBe(hp0); // dashed clean through
+  });
+
+  it('the shockwave sweeps outward and catches a flat-footed player at range', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(20);
+    g.phase = 'combat';
+    g.sovereignSpawned = true;
+    g.enemies = [];
+    g.weapons = [];
+    // player standing 300px from the epicenter — the wave has to travel to them
+    g.player.x = 300; g.player.y = 0;
+    g.player.hp = g.stats.maxHP;
+    g.player.invulnT = 0; g.player.dashT = 0;
+    const hp0 = g.player.hp;
+    g.shockRings.push({ x: 0, y: 0, r: 20, maxR: 900, speed: 600, thickness: 40, damage: 40, color: '#fff', resolved: false });
+    // hold still while the expanding ring arrives (~28 frames to reach 300px)
+    for (let f = 0; f < 40; f++) { g.player.invulnT = 0; g.player.dashT = 0; stepFrames(g, input, 1); }
+    expect(g.player.hp).toBeLessThan(hp0); // the wave reached out and struck
+  });
+
+  it('obstacle density ramps each act, peaks at 11-15, then eases for the finale', () => {
+    const range = (c: number) => pillarCountRange(c);
+    // Act boundaries follow the major bosses at 5/10/15/20
+    expect(range(1)).toEqual(range(4));       // same act pre-first-boss
+    const [, act0Max] = range(3);
+    const [act1Min, act1Max] = range(7);      // after boss 5
+    const [act2Min, act2Max] = range(12);     // after boss 10 — the peak
+    const [act3Min, act3Max] = range(18);     // after boss 15 — eased off
+    // Each cleared boss (through act 2) makes arenas denser than the last
+    expect(act1Max).toBeGreaterThan(act0Max);
+    expect(act2Max).toBeGreaterThan(act1Max);
+    // The 16-20 stretch pulls back below the peak (not "too packed")
+    expect(act3Max).toBeLessThan(act2Max);
+    expect(act3Min).toBeLessThan(act2Min);
+    // Endless chambers hold at the eased-off level, never exceeding the peak
+    for (const c of [21, 26, 40, 99]) expect(range(c)[1]).toBeLessThanOrEqual(act2Max);
+    // Ranges are always sane (min <= max, boss arenas handled by caller)
+    for (let c = 1; c <= 60; c++) { const [lo, hi] = range(c); expect(lo).toBeLessThanOrEqual(hi); expect(lo).toBeGreaterThan(0); }
   });
 
   it('legendaries never appear in normal god offerings and never repeat', () => {
@@ -825,12 +1008,24 @@ describe('twin bosses & legendaries (20-chamber run)', () => {
         }
       }
     }
-    expect(g.genLegendaryChoices().length).toBe(3); // offers up to 3 of 4
-    g.boons = [
-      { id: 'l_zeus', rarity: 'epic' }, { id: 'l_ares', rarity: 'epic' },
-      { id: 'l_hermes', rarity: 'epic' }, { id: 'l_poseidon', rarity: 'epic' },
-    ];
-    expect(g.genLegendaryChoices().length).toBe(0); // all owned -> ichor fallback
+    expect(g.genLegendaryChoices().length).toBe(3); // offers up to 3 of the pool
+    // Own EVERY legendary -> the pool is dry, so ASCENSION choices appear
+    g.boons = ['l_zeus', 'l_ares', 'l_hermes', 'l_poseidon',
+      'l_zeus2', 'l_ares2', 'l_hermes2', 'l_poseidon2']
+      .map((id) => ({ id, rarity: 'epic' as const }));
+    const asc = g.genLegendaryChoices();
+    expect(asc.length).toBe(3);
+    for (const c of asc) expect(c.name).toContain('ASCENSION');
+    // Ascending deepens the owned legendary a level and grants Might
+    const mightBefore = (g.recomputeStats(), g.stats.might);
+    g.applyBoonChoice(asc[0]);
+    const owned = g.boons.find((b) => b.id === asc[0].id)!;
+    expect(owned.level).toBe(2);
+    expect(g.boons.length).toBe(8);           // no duplicate entry
+    expect(g.stats.might).toBeGreaterThan(mightBefore); // +10% Might rider
+    // Fully ascended (level 4) legendaries drop out of the offering
+    for (const b of g.boons) b.level = 4;
+    expect(g.genLegendaryChoices().length).toBe(0); // truly dry -> ichor fallback
   });
 
   it('legendary effects hook the sim: storm lord bolts and undying frenzy', () => {
@@ -917,8 +1112,9 @@ describe('massacre bonus & storm lightning', () => {
   it('kills build a modest fading XP multiplier that resets out of combat', () => {
     const { g, input } = createHeadlessGame();
     g.startRun();
-    g.phase = 'cleared'; // drive kills manually
+    g.phase = 'combat'; // the chain only grows on combat kills
     g.enemies = [];
+    g.quota = 1e9; // keep the chamber from clearing mid-test
     expect(g.massacreMult()).toBe(1); // no chain yet
     // Chain up 20 kills
     for (let i = 0; i < 20; i++) {

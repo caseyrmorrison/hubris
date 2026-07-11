@@ -464,6 +464,21 @@ export const BOON_DEFS: BoonDef[] = [
     describe: () => `+10% move speed, and dashing knocks enemies out of your path.`,
     apply: (s, mo) => { mo.slipstream = true; s.moveSpeed += 0.10; },
   },
+  {
+    id: 'rending', god: 'ares', name: 'Rending Edge',
+    describe: (m) => `Your projectiles punch through ${Math.round(m)} extra foe${Math.round(m) > 1 ? 's' : ''}.`,
+    apply: (s, _mo, m) => { s.pierce += Math.round(m); },
+  },
+  {
+    id: 'farsight', god: 'hermes', name: 'Farsight',
+    describe: (m) => `+${Math.round(12 * m)}% attack range.`,
+    apply: (s, _mo, m) => { s.range += 0.12 * m; },
+  },
+  {
+    id: 'swell', god: 'poseidon', name: 'Breaking Swell',
+    describe: (m) => `+${Math.round(12 * m)}% blast & wave radius.`,
+    apply: (s, _mo, m) => { s.area += 0.12 * m; },
+  },
   // --- LEGENDARIES (guaranteed boss rewards; one per god) ---
   {
     id: 'l_zeus', god: 'zeus', legendary: true, name: "Skyfather's Wrath",
@@ -488,6 +503,35 @@ export const BOON_DEFS: BoonDef[] = [
     id: 'l_poseidon', god: 'poseidon', legendary: true, name: 'King Tide',
     describe: () => `Your finishing blows release a breaking wave that shoves and wounds everything near.`,
     apply: (s, mo) => { mo.kingTide = true; },
+  },
+  {
+    id: 'l_zeus2', god: 'zeus', legendary: true, name: 'Thousand Bolts',
+    describe: () => `Every hit courts the sky: +12% smite chance, +12% chain chance, mighty bolts.`,
+    apply: (s, mo, m) => {
+      mo.smiteChance += 0.053 * m;
+      mo.chainChance += 0.053 * m;
+      mo.smiteDamage = Math.max(mo.smiteDamage, 10 + 4 * m);
+      mo.chainDamage = Math.max(mo.chainDamage, 0.5);
+    },
+  },
+  {
+    id: 'l_ares2', god: 'ares', legendary: true, name: "Executioner's Brand",
+    describe: () => `The mighty fall hardest: +40% damage to elites & bosses, +7% crit.`,
+    apply: (s, mo, m) => { s.vsElitePct += 0.18 * m; s.critChance += 0.03 * m; },
+  },
+  {
+    id: 'l_hermes2', god: 'hermes', legendary: true, name: 'Arsenal of Olympus',
+    describe: () => `+1 projectile to every multi-shot attack, +11% attack speed.`,
+    apply: (s, mo, m) => { s.projectiles += 1; s.atkSpeed += 0.05 * m; },
+  },
+  {
+    id: 'l_poseidon2', god: 'poseidon', legendary: true, name: 'World-Breaker',
+    describe: () => `+34% blast radius, +45% knockback, foes slammed into walls take heavy damage.`,
+    apply: (s, mo, m) => {
+      s.area += 0.15 * m;
+      mo.knockbackPct += 0.2 * m;
+      mo.slamDamage = Math.max(mo.slamDamage, 8 + 3 * m);
+    },
   },
 ];
 
@@ -534,6 +578,9 @@ export const MIRROR_DEFS: MirrorDef[] = [
   { id: 'echoes', name: 'Lingering Echoes', desc: 'Obelisk buffs last 20% longer per rank', maxLevel: 3, costs: [6, 11, 17] },
   { id: 'charon', name: "Charon's Favor", desc: 'Shop, gilded chest & reroll prices −10% per rank', maxLevel: 3, costs: [8, 13, 20] },
   { id: 'lodestone', name: 'Lodestone', desc: '+25px pickup radius per rank', maxLevel: 2, costs: [5, 10] },
+  { id: 'piercing', name: 'Piercing Fates', desc: '+1 projectile pierce per rank', maxLevel: 2, costs: [25, 45] },
+  { id: 'reach', name: 'Olympian Reach', desc: '+8% attack range & blast radius per rank', maxLevel: 3, costs: [15, 25, 40] },
+  { id: 'quiver', name: 'Endless Quiver', desc: '+1 projectile to multi-shot attacks', maxLevel: 1, costs: [60] },
 ];
 
 // -------------------------- Pact of Punishment -----------------------------
@@ -667,9 +714,11 @@ export function skinUnlocked(skin: SkinDef, cs: import('./meta').CharStats): boo
 }
 
 // Basic-attack tuning (all scale with the strike bracket & attack speed)
+// Arrows stop at their first mark by default — piercing is EARNED, via the
+// Rending Edge boon or the mirror's Piercing Fates (stats.pierce adds through).
 export const ARROW = {
-  base: 15, speed: 660, cd: 0.38, life: 0.85, pierce: 1,
-  power: { mult: 1.5, count: 3, spread: 0.16, pierce: 3, cd: 0.55 },
+  base: 15, speed: 660, cd: 0.38, life: 0.85, pierce: 0,
+  power: { mult: 1.5, count: 3, spread: 0.16, pierce: 1, cd: 0.55 },
 };
 export const ORB = {
   base: 18, speed: 430, cd: 0.6, life: 1.35, aoe: 48, aoeFrac: 0.7,
@@ -815,4 +864,21 @@ export function isBossChamber(c: number): boolean {
 /** Twin fights: two bosses at once — the mid-run barrier and the finale. */
 export function isTwinBossChamber(c: number): boolean {
   return c === 10 || c === CHAMBER_COUNT;
+}
+
+/**
+ * How many pillars clutter a (non-boss) chamber, as a [min, max] range.
+ *
+ * Obstacle density steps up each time you clear a major boss (chamber number
+ * already encodes bosses-passed, since the run is linear): the arenas get
+ * harder to cross and reward planning a route through the cover. It peaks in
+ * the third act (chambers 11–15) and then deliberately eases back for the
+ * finale stretch so 16–20 don't choke on obstacles. Endless chambers hold at
+ * that eased-off level rather than piling on forever.
+ */
+export function pillarCountRange(c: number): [number, number] {
+  const act = Math.min(Math.max(Math.floor((c - 1) / 5), 0), 3);
+  const min = [3, 5, 6, 5][act];
+  const max = [5, 6, 8, 6][act];
+  return [min, max];
 }

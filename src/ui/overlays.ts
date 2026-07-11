@@ -573,6 +573,11 @@ export class UIManager {
         ['REDUCED', () => st.dmgNumbers === 'reduced', () => { st.dmgNumbers = 'reduced'; }],
         ['OFF', () => st.dmgNumbers === 'off', () => { st.dmgNumbers = 'off'; }],
       ]),
+      cycle('HUD size', [
+        ['DEFAULT', () => st.hudSize === 'default', () => { st.hudSize = 'default'; }],
+        ['LARGE', () => st.hudSize === 'large', () => { st.hudSize = 'large'; }],
+        ['HUGE', () => st.hudSize === 'huge', () => { st.hudSize = 'huge'; }],
+      ]),
       cycle('Audio', [
         ['ON', () => !g.save.muted, () => { g.save.muted = false; g.audio.setMuted(false); }],
         ['MUTED', () => g.save.muted, () => { g.save.muted = true; g.audio.setMuted(true); }],
@@ -707,6 +712,7 @@ export class UIManager {
     } else {
       this.levelup.classList.remove('visible');
       this.setMode('none');
+      this.g.maybeOpenLegendary(); // a boss reward may be waiting its turn
     }
     this.refreshBuild();
   }
@@ -779,6 +785,7 @@ export class UIManager {
     this.setMode('none');
     if (!this.legendaryMode) this.g.afterBoonPicked();
     this.legendaryMode = false;
+    this.g.maybeOpenLegendary(); // queued boss rewards take the stage first
     this.g.maybeOpenLevelUp();
     this.refreshBuild();
   }

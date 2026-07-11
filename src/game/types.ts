@@ -35,6 +35,10 @@ export interface Stats {
   armor: number;          // flat damage reduction (hits floor at 1)
   vsElitePct: number;     // bonus damage vs elites & bosses
   killHeal: number;       // HP restored per kill
+  pierce: number;         // extra foes your projectiles punch through
+  area: number;           // +% blast/AoE radius
+  range: number;          // +% attack reach
+  projectiles: number;    // extra projectiles for multi-shot attacks
 }
 
 /** Boon-driven behaviour switches & proc magnitudes. */
@@ -208,6 +212,22 @@ export interface ShockwaveFx {
   color: string;
 }
 
+/**
+ * The Archon's arrival wave: a visible ring of force that races outward and
+ * deals damage as its leading edge sweeps over you. Dash through it at the
+ * right moment and the dodge i-frames carry you clean.
+ */
+export interface ShockRing {
+  x: number; y: number;      // epicenter
+  r: number;                 // current leading-edge radius
+  maxR: number;
+  speed: number;             // px/s expansion
+  thickness: number;         // collision band width
+  damage: number;
+  color: string;
+  resolved: boolean;         // has the player's contact already been decided?
+}
+
 /** Comet Shard impacts land after a short telegraph. */
 export interface DelayedHit {
   x: number; y: number;
@@ -325,6 +345,8 @@ export interface Pillar {
 export interface OwnedBoon {
   id: string;
   rarity: Rarity;
+  /** Legendary ascension: 1 = base; each level deepens the effect. */
+  level?: number;
 }
 
 /** Runtime state of an equipped auto-weapon. */

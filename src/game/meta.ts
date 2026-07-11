@@ -9,6 +9,7 @@ export interface Settings {
   dmgNumbers: 'full' | 'reduced' | 'off';
   autoAim: boolean;                      // aim locks to the nearest enemy
   autoFire: boolean;                     // attack whenever a target is in range
+  hudSize: 'default' | 'large' | 'huge'; // scales the in-run HUD + pads it off the edges
 }
 
 /** Per-character lifetime stats — drive skin unlock tasks. */
@@ -46,7 +47,7 @@ const KEY = 'hubris_save_v1';
 export function defaultSettings(): Settings {
   return {
     master: 0.8, music: 0.6, sfx: 0.9, shake: 1, dmgNumbers: 'full',
-    autoAim: false, autoFire: false,
+    autoAim: false, autoFire: false, hudSize: 'default',
   };
 }
 
@@ -155,6 +156,10 @@ export function applyMirrorToStats(save: SaveData, s: Stats): void {
   s.critChance += 0.02 * mirrorLevel(save, 'lethality');
   s.pickupRadius += 25 * mirrorLevel(save, 'lodestone');
   s.armor += mirrorLevel(save, 'armor');
+  s.pierce += mirrorLevel(save, 'piercing');
+  s.range += 0.08 * mirrorLevel(save, 'reach');
+  s.area += 0.08 * mirrorLevel(save, 'reach');
+  s.projectiles += mirrorLevel(save, 'quiver');
   // Pact of Punishment
   s.maxHP -= 25 * heatLevel(save, 'frail');
 }

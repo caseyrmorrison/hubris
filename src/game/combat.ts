@@ -174,7 +174,8 @@ function updatePlayer(g: Game, dt: number): void {
 
   // Basic attack (character-specific). Auto-fire attacks whenever a target
   // is inside this character's effective reach.
-  const autoReach = g.character === 'archer' ? 600 : g.character === 'mage' ? 460 : STRIKE_RANGE + 30;
+  const autoReach = (g.character === 'archer' ? 600 : g.character === 'mage' ? 460 : STRIKE_RANGE + 30)
+    * (1 + g.stats.range);
   const autoWants = g.save.settings.autoFire && autoTarget !== null
     && autoDist <= autoReach + (autoTarget?.radius ?? 0);
   if ((input.mouseDown || input.padFire || input.touchAimHeld || autoWants)
@@ -187,12 +188,13 @@ function updatePlayer(g: Game, dt: number): void {
 
 /** King Tide legendary: finishing blows release a breaking wave. */
 function kingTideWave(g: Game, x: number, y: number): void {
-  g.shockwaves.push({ x, y, r: 12, maxR: 110, life: 0.3, color: '#4a90ff' });
+  const r = 110 * (1 + g.stats.area);
+  g.shockwaves.push({ x, y, r: 12, maxR: r, life: 0.3, color: '#4a90ff' });
   g.audio.play('nova');
-  g.hash.query(x, y, 110, Q);
+  g.hash.query(x, y, r, Q);
   for (const e of Q) {
     const d = Math.hypot(e.x - x, e.y - y);
-    if (d > 110 + e.radius) continue;
+    if (d > r + e.radius) continue;
     g.dealDamage(e, 35, {
       source: 'nova',
       kx: ((e.x - x) / Math.max(10, d)) * 420,
@@ -239,13 +241,13 @@ function shootArrow(g: Game): void {
   p.comboIdx = (p.comboIdx + 1) % 3;
   p.comboT = 1.4;
   if (power && g.mods.kingTide) kingTideWave(g, p.x, p.y);
-  const n = power ? ARROW.power.count : 1;
+  const n = (power ? ARROW.power.count : 1) + (power ? g.stats.projectiles : 0);
   for (let i = 0; i < n; i++) {
     const a = p.aim + (i - (n - 1) / 2) * ARROW.power.spread;
     const pr = makeProj('arrow', p.x + Math.cos(a) * 16, p.y + Math.sin(a) * 16,
       Math.cos(a) * ARROW.speed, Math.sin(a) * ARROW.speed,
       6, ARROW.base * (power ? ARROW.power.mult : 1), true,
-      power ? ARROW.power.pierce : ARROW.pierce, 0);
+      (power ? ARROW.power.pierce : ARROW.pierce) + g.stats.pierce, 0);
     g.projectiles.push(pr);
   }
   g.audio.play('dash');
@@ -265,7 +267,7 @@ function castOrb(g: Game): void {
   const pr = makeProj('orb', p.x + Math.cos(p.aim) * 18, p.y + Math.sin(p.aim) * 18,
     Math.cos(p.aim) * ORB.speed, Math.sin(p.aim) * ORB.speed,
     surge ? 12 : 9, ORB.base * (surge ? ORB.surge.mult : 1), true, 0, 0);
-  pr.aoe = surge ? ORB.surge.aoe : ORB.aoe;
+  pr.aoe = (surge ? ORB.surge.aoe : ORB.aoe) * (1 + g.stats.area);
   g.projectiles.push(pr);
   g.audio.play('nova');
 }
@@ -300,13 +302,14 @@ function doStrike(g: Game): void {
   const base = STRIKE_BASE * (finisher ? FINISHER_MULT : 1);
   const knock = 260 * (finisher ? 1.9 : 1);
 
+  const reach = STRIKE_RANGE * (1 + g.stats.range); // Farsight / Olympian Reach
   const cx = p.x + Math.cos(p.aim) * 30;
   const cy = p.y + Math.sin(p.aim) * 30;
-  g.hash.query(cx, cy, STRIKE_RANGE + 30, Q);
+  g.hash.query(cx, cy, reach + 30, Q);
   const hit: Enemy[] = [];
   for (const e of Q) {
     const d = Math.hypot(e.x - p.x, e.y - p.y);
-    if (d > STRIKE_RANGE + e.radius) continue;
+    if (d > reach + e.radius) continue;
     if (Math.abs(angleDiff(p.aim, Math.atan2(e.y - p.y, e.x - p.x))) > arc) continue;
     hit.push(e);
   }
@@ -323,7 +326,7 @@ function doStrike(g: Game): void {
     const pr = g.projectiles[i];
     if (pr.friendly) continue;
     const d = Math.hypot(pr.x - p.x, pr.y - p.y);
-    if (d < STRIKE_RANGE + 14 &&
+    if (d < reach + 14 &&
       Math.abs(angleDiff(p.aim, Math.atan2(pr.y - p.y, pr.x - p.x))) < arc + 0.2) {
       g.particles.burst(pr.x, pr.y, '#ffe08a', 5, { speed: 140, size: 4, life: 0.3 });
       g.projectiles.splice(i, 1);
@@ -443,17 +446,18 @@ function updateWeapons(g: Game, dt: number): void {
       case 'darts': {
         w.t -= dt;
         if (w.t <= 0) {
-          const targets = nearestEnemies(g, p.x, p.y, 700, DARTS.count[li]);
+          const dCount = DARTS.count[li] + g.stats.projectiles;
+          const targets = nearestEnemies(g, p.x, p.y, 700, dCount);
           if (targets.length === 0) {
             w.t = 0.2;
           } else {
             w.t = DARTS.interval[li] / atk;
-            for (let i = 0; i < DARTS.count[li]; i++) {
+            for (let i = 0; i < dCount; i++) {
               const tgt = targets[i % targets.length];
               const a = Math.atan2(tgt.y - p.y, tgt.x - p.x) + rand(-0.3, 0.3);
               g.projectiles.push(makeProj('dart', p.x, p.y,
                 Math.cos(a) * DARTS.speed, Math.sin(a) * DARTS.speed,
-                7, DARTS.damage[li], true, 0, tgt.id));
+                7, DARTS.damage[li], true, g.stats.pierce, tgt.id));
             }
           }
         }
@@ -463,7 +467,7 @@ function updateWeapons(g: Game, dt: number): void {
         w.t -= dt;
         if (w.t <= 0) {
           w.t = PULSE.interval[li] / atk;
-          const r = PULSE.radius[li];
+          const r = PULSE.radius[li] * (1 + g.stats.area);
           g.shockwaves.push({ x: p.x, y: p.y, r: 14, maxR: r, life: 0.35, color: '#c17bff' });
           g.audio.play('nova');
           g.hash.query(p.x, p.y, r, Q);
@@ -499,8 +503,8 @@ function updateWeapons(g: Game, dt: number): void {
         w.t -= dt;
         if (w.t <= 0) {
           w.t = CHAKRAM.interval[li] / atk;
-          const n = CHAKRAM.count[li];
-          const spread = [0, 0.55, -0.55];
+          const n = CHAKRAM.count[li] + g.stats.projectiles;
+          const spread = [0, 0.55, -0.55, 1.1, -1.1, Math.PI];
           for (let i = 0; i < n; i++) {
             const a = p.aim + spread[i % spread.length];
             g.projectiles.push(makeProj('chakram', p.x, p.y,
@@ -546,13 +550,13 @@ function updateWeapons(g: Game, dt: number): void {
         w.t -= dt;
         if (w.t <= 0) {
           w.t = MIRRORB.interval[li] / atk;
-          const n = MIRRORB.count[li];
+          const n = MIRRORB.count[li] + g.stats.projectiles;
           const back = p.aim + Math.PI;
           for (let i = 0; i < n; i++) {
             const a = back + (i - (n - 1) / 2) * 0.3;
             g.projectiles.push(makeProj('mirror', p.x, p.y,
               Math.cos(a) * MIRRORB.speed, Math.sin(a) * MIRRORB.speed,
-              9, MIRRORB.damage[li], true, MIRRORB.pierce, 0));
+              9, MIRRORB.damage[li], true, MIRRORB.pierce + g.stats.pierce, 0));
           }
         }
         break;
@@ -580,12 +584,12 @@ function updateWeapons(g: Game, dt: number): void {
         w.t -= dt;
         if (w.t <= 0) {
           w.t = SPEAR.interval[li] / atk;
-          const n = SPEAR.count[li];
+          const n = SPEAR.count[li] + g.stats.projectiles;
           for (let i = 0; i < n; i++) {
             const a = p.aim + (i - (n - 1) / 2) * 0.14;
             g.projectiles.push(makeProj('spear', p.x + Math.cos(a) * 18, p.y + Math.sin(a) * 18,
               Math.cos(a) * SPEAR.speed, Math.sin(a) * SPEAR.speed,
-              9, SPEAR.damage[li], true, SPEAR.pierce, 0));
+              9, SPEAR.damage[li], true, SPEAR.pierce + g.stats.pierce, 0));
           }
         }
         break;
@@ -1292,7 +1296,7 @@ function updateProjectiles(g: Game, dt: number): void {
     } else if (pr.kind === 'mirror') {
       if (pr.life > 1.6) dead = true;
     } else if (pr.kind === 'arrow') {
-      if (pr.life > ARROW.life) dead = true;
+      if (pr.life > ARROW.life * (1 + g.stats.range)) dead = true;
     } else if (pr.kind === 'spear') {
       if (pr.life > SPEAR.life) dead = true;
     } else if (pr.kind === 'orb') {

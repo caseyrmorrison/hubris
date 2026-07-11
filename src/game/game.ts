@@ -15,7 +15,7 @@ import {
   STORM_DAMAGE, STORM_INTERVAL, TOME_DEFS, TOME_MAX_LEVEL, TOWER_DEFS,
   WEAPON_DEFS, WEAPON_MAX_LEVEL, LEGENDARY_COLOR, biomeIndex, boonDef, bossHPFor,
   chamberQuota, characterDef, enemyDmgScale, enemyHPScale, isBossChamber,
-  isTwinBossChamber, rollRarity, skinUnlocked, towerDef, weaponDef,
+  isTwinBossChamber, pillarCountRange, rollRarity, skinUnlocked, towerDef, weaponDef,
   weaponUnlocked, xpForLevel,
   type SkinDef,
 } from './data';
@@ -30,7 +30,7 @@ import {
   type DamageNumber, type DelayedHit, type Door, type EliteMod, type Enemy,
   type GodId, type LightningFx, type Mods, type OwnedBoon, type OwnedWeapon,
   type Chest, type Pickup, type Pillar, type Projectile, type Rarity,
-  type RewardKind, type RunTotals, type ShockwaveFx, type ShopItem, type Stats,
+  type RewardKind, type RunTotals, type ShockRing, type ShockwaveFx, type ShopItem, type Stats,
   type Telegraph, type Tower, type Trap,
 } from './types';
 import { spawnBoss, updateCombat } from './combat';
@@ -188,6 +188,8 @@ export class Game {
   xp = 0;
   xpNeeded = xpForLevel(1);
   pendingLevelUps = 0;
+  bankedLevelUps = 0; // Awakening head-start: claim with L, or on first natural level-up
+  pendingLegendaries = 0; // boss rewards queue behind whatever overlay is up
   weapons: OwnedWeapon[] = [];
   tomes: Record<string, number> = {};
   boons: OwnedBoon[] = [];
@@ -219,6 +221,7 @@ export class Game {
   dmgNumbers: DamageNumber[] = [];
   lightning: LightningFx[] = [];
   shockwaves: ShockwaveFx[] = [];
+  shockRings: ShockRing[] = [];
   telegraphs: Telegraph[] = [];
   delayedHits: DelayedHit[] = [];
 
@@ -283,6 +286,7 @@ export class Game {
       critChance: 0.05, critMult: 2, xpGain: 0, goldGain: 0, luck: 0,
       pickupRadius: 90, dashCharges: 2, dashRecharge: 1.3,
       armor: 0, vsElitePct: 0, killHeal: 0,
+      pierce: 0, area: 0, range: 0, projectiles: 0,
     };
   }
 
@@ -301,7 +305,12 @@ export class Game {
     const mods = emptyMods();
     for (const owned of this.boons) {
       const def = boonDef(owned.id);
-      def.apply(s, mods, RARITY_MULT[owned.rarity]);
+      const asc = owned.level ?? 1;
+      // Ascended legendaries: the effect itself deepens with each level, and
+      // every ascension also grants +10% Might — so even flag-style
+      // legendaries (Storm Lord, King Tide) get stronger.
+      def.apply(s, mods, RARITY_MULT[owned.rarity] * (def.legendary ? asc : 1));
+      if (def.legendary && asc > 1) s.might += 0.10 * (asc - 1);
     }
     s.luck += this.shopLuck; // Fortune Contracts persist through recomputes
     // Character passives
@@ -497,6 +506,8 @@ export class Game {
     this.xp = 0;
     this.xpNeeded = xpForLevel(1);
     this.pendingLevelUps = 0;
+    this.bankedLevelUps = 0;
+    this.pendingLegendaries = 0;
     this.weapons = [];
     this.tomes = {};
     this.boons = [];
@@ -537,13 +548,17 @@ export class Game {
     this.weapons.push({ id: startWeapon.id, level: 1, t: 0, angle: 0, trailT: 0 });
     this.setupChamber(1);
     this.ui.showToast(`${startWeapon.name} equipped`, startWeapon.color);
-    // Awakening: begin the run already leveled — choices open immediately
+    // Awakening: begin the run already leveled. The upgrade picks are BANKED
+    // rather than prompted at the door (games with pre-leveled starts — Halls
+    // of Torment, Death Must Die — let you claim when ready instead of
+    // interrupting): press L anytime, or they fold into the first natural
+    // level-up. A pulsing HUD badge advertises the stash.
     const awakening = mirrorLevel(this.save, 'awakening');
     if (awakening > 0) {
       this.level += awakening;
       this.xpNeeded = xpForLevel(this.level);
-      this.pendingLevelUps += awakening;
-      this.maybeOpenLevelUp();
+      this.bankedLevelUps += awakening;
+      this.ui.showToast(`AWAKENED — ${awakening} level-up${awakening > 1 ? 's' : ''} banked (L to choose)`, '#ffe08a');
     }
   }
 
@@ -565,6 +580,7 @@ export class Game {
     this.pickups = [];
     this.patches = [];
     this.telegraphs = [];
+    this.shockRings = [];
     this.delayedHits = [];
     this.traps = [];
     this.doors = [];
@@ -576,17 +592,22 @@ export class Game {
     this.eliteAliveCap = c >= 6 ? 3 : 2;
 
     const isBoss = isBossChamber(c);
-    // Pillars: none in boss arenas, 3-5 elsewhere; keep the center open.
+    // Pillars: none in boss arenas. Elsewhere the count ramps as you clear
+    // major bosses (see pillarCountRange) so later arenas are harder to cross;
+    // the center and player start stay clear so you never spawn boxed in.
     this.pillars = [];
     this.towers = [];
     this.chests = [];
     if (!isBoss) {
-      const n = randInt(3, 5);
+      const [lo, hi] = pillarCountRange(c);
+      const n = randInt(lo, hi);
       for (let i = 0; i < n; i++) {
-        for (let tries = 0; tries < 20; tries++) {
+        for (let tries = 0; tries < 40; tries++) {
           const x = rand(-this.arenaHalfW + 160, this.arenaHalfW - 160);
           const y = rand(-this.arenaHalfH + 160, this.arenaHalfH - 160);
           if (Math.abs(x) < 180 && Math.abs(y) < 180) continue;
+          // Keep the top-center strip clear — doors appear there on clear
+          if (y < -this.arenaHalfH + 320 && Math.abs(x) < 620) continue;
           if (Math.abs(x - this.player.x) < 220 && Math.abs(y - this.player.y) < 220) continue;
           if (this.pillars.some((p) => (p.x - x) ** 2 + (p.y - y) ** 2 < 260 ** 2)) continue;
           this.pillars.push({ x, y, radius: rand(42, 68) });
@@ -864,9 +885,12 @@ export class Game {
     if (this.phase === 'combat') this.killsInChamber++;
     this.frenzyStacks++;
     this.frenzyIdleT = 0;
-    // Massacre chain: each kill extends the window and grows the multiplier
-    this.massacreCount++;
-    this.massacreT = MASSACRE_WINDOW;
+    // Massacre chain: each COMBAT kill extends the window and grows the
+    // multiplier — nothing else sustains it, and it ends with the chamber.
+    if (this.phase === 'combat') {
+      this.massacreCount++;
+      this.massacreT = MASSACRE_WINDOW;
+    }
     // Tome of the Leech
     if (this.stats.killHeal > 0) {
       this.player.hp = Math.min(this.stats.maxHP, this.player.hp + this.stats.killHeal);
@@ -928,7 +952,7 @@ export class Game {
   }
 
   explodeNova(x: number, y: number): void {
-    const r = this.mods.novaRadius;
+    const r = this.mods.novaRadius * (1 + this.stats.area);
     this.shockwaves.push({ x, y, r: 8, maxR: r, life: 0.3, color: '#ff5a5a' });
     this.audio.play('nova');
     const near: Enemy[] = [];
@@ -977,6 +1001,20 @@ export class Game {
         x: this.player.x, y: this.player.y, r: 10, maxR: 150, life: 0.45, color: '#f0c75e',
       });
     }
+    // A natural level-up cashes in any banked Awakening picks — you were
+    // stopping to choose anyway, so they ride along in the same session.
+    if (this.pendingLevelUps > 0 && this.bankedLevelUps > 0) {
+      this.pendingLevelUps += this.bankedLevelUps;
+      this.bankedLevelUps = 0;
+    }
+    this.maybeOpenLevelUp();
+  }
+
+  /** Cash in banked Awakening level-ups on demand (the L key / HUD badge). */
+  claimBankedLevelUps(): void {
+    if (this.bankedLevelUps <= 0) return;
+    this.pendingLevelUps += this.bankedLevelUps;
+    this.bankedLevelUps = 0;
     this.maybeOpenLevelUp();
   }
 
@@ -988,12 +1026,32 @@ export class Game {
     }
   }
 
-  hurtPlayer(dmg: number, fromX?: number, fromY?: number, ignoreGuard = false): void {
+  /**
+   * Deliver a queued boss legendary — but only when no other overlay is up.
+   * A boss can die in the same frame a level-up opens; opening the legendary
+   * panel on top of it left two stacked panels fighting over the same digit
+   * keys, and the pick landed on a card the player never saw. Queuing means
+   * the legendary waits its turn and always gets its own moment.
+   */
+  maybeOpenLegendary(): void {
+    if (this.pendingLegendaries <= 0 || this.overlayOpen || this.state !== 'run'
+      || this.phase === 'over' || this.deathT > 0) return;
+    this.pendingLegendaries--;
+    if (this.genLegendaryChoices().length > 0) {
+      this.audio.play('unlock');
+      this.ui.openLegendary();
+    } else {
+      this.addIchor(20);
+      this.ui.showToast('The gods have no legends left to give — +20 Ichor', FATE_COLOR.mixed);
+    }
+  }
+
+  hurtPlayer(dmg: number, fromX?: number, fromY?: number): void {
     const p = this.player;
     if (this.phase === 'over' || this.deathT > 0) return;
-    // Most hits respect dodge i-frames and mercy; unavoidable events (the
-    // Archon's arrival) pass ignoreGuard to bypass them.
-    if (!ignoreGuard && (p.invulnT > 0 || p.dashT > 0)) return;
+    // Every hit respects dodge i-frames and the mercy window — including the
+    // Archon's arrival shockwave, which is why a well-timed dash slips it.
+    if (p.invulnT > 0 || p.dashT > 0) return;
     dmg *= 1 + this.chaosMods.damageTaken; // Blood Price and its kin
     // Armor (Thick Skin + Tome of the Turtle): flat reduction, min 1
     if (this.stats.armor > 0) dmg = Math.max(1, dmg - this.stats.armor);
@@ -1216,12 +1274,24 @@ export class Game {
         desc: 'A random owned weapon gains a level.', cost: Math.round((80 + c * 10) * p), bought: false,
       },
       {
-        id: 'blessing', name: 'Sealed Blessing', icon: '✦', color: '#c17bff',
-        desc: 'A random god grants a random boon.', cost: Math.round((100 + c * 12) * p), bought: false,
-      },
-      {
         id: 'contract', name: 'Fortune Contract', icon: '☘', color: '#7bf1a8',
         desc: '+2 Luck for the rest of this run.', cost: Math.round(70 * p), bought: false,
+      },
+      // --- Charon's reserve: three premium wares at premium prices ---
+      {
+        id: 'ambrosia_prime', name: 'Ambrosia Prime', icon: '❂', color: '#3ddc97',
+        desc: 'Fully heal, and +15 max HP for the rest of this run.',
+        cost: Math.round((150 + c * 20) * p), bought: false,
+      },
+      {
+        id: 'arsenal', name: 'Arsenal Shipment', icon: '⚒', color: '#ffd166',
+        desc: 'THREE random owned weapons each gain a level.',
+        cost: Math.round((230 + c * 26) * p), bought: false,
+      },
+      {
+        id: 'pantheon', name: "Pantheon's Favor", icon: '♛', color: '#ff9838',
+        desc: 'A random god grants an EPIC boon — no lesser rolls.',
+        cost: Math.round((280 + c * 30) * p), bought: false,
       },
     ];
     return items;
@@ -1251,18 +1321,46 @@ export class Game {
         }
         break;
       }
-      case 'blessing': {
-        const gods: GodId[] = ['zeus', 'ares', 'hermes', 'poseidon'];
-        const cs = this.genBoonChoices(choice(gods));
-        const pick = cs[0];
-        this.applyBoonChoice(pick);
-        this.ui.showToast(`${pick.name} (${pick.rarity})`, '#c17bff');
-        break;
-      }
       case 'contract': {
         this.shopLuck += 2;
         this.recomputeStats();
         this.ui.showToast('+2 Luck', '#7bf1a8');
+        break;
+      }
+      case 'ambrosia_prime': {
+        this.chaosMods.maxHP += 15; // rides the run-long modifier channel
+        this.recomputeStats();
+        this.player.hp = this.stats.maxHP;
+        this.ui.showToast('Fully healed — +15 max HP', '#3ddc97');
+        break;
+      }
+      case 'arsenal': {
+        let leveled = 0;
+        for (let i = 0; i < 3; i++) {
+          const upgradeable = this.weapons.filter((w) => w.level < WEAPON_MAX_LEVEL);
+          if (upgradeable.length === 0) break;
+          const w = choice(upgradeable);
+          w.level++;
+          leveled++;
+          if (w.level === WEAPON_MAX_LEVEL) this.audio.play('transcend');
+        }
+        if (leveled > 0) {
+          this.ui.showToast(`Arsenal delivered: +${leveled} weapon level${leveled > 1 ? 's' : ''}`, '#ffd166');
+        } else {
+          this.addGold(item.cost); // nothing to upgrade — net free
+          this.ui.showToast('Nothing left to upgrade', '#8a93b8');
+        }
+        break;
+      }
+      case 'pantheon': {
+        const gods: GodId[] = ['zeus', 'ares', 'hermes', 'poseidon'];
+        const cs = this.genBoonChoices(choice(gods));
+        const pick = cs[0];
+        if (pick) {
+          pick.rarity = 'epic'; // Charon deals only in the finest
+          this.applyBoonChoice(pick);
+          this.ui.showToast(`${pick.name} (EPIC)`, '#ff9838');
+        }
         break;
       }
     }
@@ -1343,15 +1441,28 @@ export class Game {
     this.shockwaves.push({ x: dx, y: dy, r: 24, maxR: 680, life: 0.9, color: BOSSES.sovereign.color });
     this.particles.burst(dx, dy, BOSSES.sovereign.color, 70, { speed: 420, size: 9, life: 1 });
 
-    // Unavoidable arrival: shove the player clear and chip them, even if they
-    // were standing right under it.
+    // The landing itself only bites up close: if you were caught standing
+    // under the Archon it hurls you clear and strikes you (dodgeable — dash on
+    // the drop and you slip it). From a safe distance the impact whiffs.
     const p = this.player;
+    const IMPACT_R = 170;
     let pdx = p.x - dx, pdy = p.y - dy;
     let pd = Math.hypot(pdx, pdy);
     if (pd < 1) { pdx = 0; pdy = 1; pd = 1; } // directly beneath — hurl downward
-    p.x = clamp(p.x + (pdx / pd) * 90, -this.arenaHalfW + 15, this.arenaHalfW - 15);
-    p.y = clamp(p.y + (pdy / pd) * 90, -this.arenaHalfH + 15, this.arenaHalfH - 15);
-    this.hurtPlayer(Math.max(10, Math.round(this.stats.maxHP * 0.12)), dx, dy, true);
+    if (pd <= IMPACT_R) {
+      p.x = clamp(p.x + (pdx / pd) * 90, -this.arenaHalfW + 15, this.arenaHalfW - 15);
+      p.y = clamp(p.y + (pdy / pd) * 90, -this.arenaHalfH + 15, this.arenaHalfH - 15);
+      this.hurtPlayer(Math.max(8, Math.round(this.stats.maxHP * 0.1)), dx, dy);
+    }
+
+    // The threat everyone must answer, near or far: a visible wall of force
+    // races outward from the crater. Time a dash so its i-frames carry you
+    // through the ring as it sweeps over you; stand flat-footed and it bites.
+    this.shockRings.push({
+      x: dx, y: dy, r: 18, maxR: 2600, speed: 560,
+      thickness: 54, damage: Math.max(12, Math.round(this.stats.maxHP * 0.16)),
+      color: BOSSES.sovereign.color, resolved: false,
+    });
 
     // The Archon lands where it struck
     spawnBoss(this, 'sovereign');
@@ -1363,10 +1474,8 @@ export class Game {
     this.bannerText = `${BOSSES.sovereign.name} DESCENDS`;
 
     // One last legend before the final stand
-    if (this.genLegendaryChoices().length > 0) {
-      this.audio.play('unlock');
-      this.ui.openLegendary();
-    }
+    this.pendingLegendaries++;
+    this.maybeOpenLegendary();
   }
 
   bossDefeated(boss: Enemy): void {
@@ -1405,9 +1514,11 @@ export class Game {
       return;
     }
     if (this.chamber === CHAMBER_COUNT) {
-      // The Archon falls — the escape is won. Bank now; the victory prompt
-      // waits a couple of seconds so the loot is collected first.
-      this.addIchor(30);
+      // The Archon falls — the escape is won. A rich ichor purse pays out
+      // now, and the boss-chamber legendary queued below is owed: continue
+      // into endless and it's the first thing the gods hand you.
+      this.addIchor(50);
+      this.ui.showToast('THE ARCHON FALLS — +50 Ichor, a legend awaits in the descent', '#ff9838');
       this.phase = 'over';
       this.bankMeta(true);
       this.pendingVictoryT = 2.5;
@@ -1422,14 +1533,10 @@ export class Game {
       this.phase = 'combat'; // even if it died mid-intro
       this.pendingClearT = 2.2; // loot vacuums in before the doors appear
     }
-    // Every conquered boss chamber earns a Legendary boon from the gods
-    if (this.genLegendaryChoices().length > 0) {
-      this.audio.play('unlock');
-      this.ui.openLegendary();
-    } else {
-      this.addIchor(20);
-      this.ui.showToast('The gods have no legends left to give — +20 Ichor', FATE_COLOR.mixed);
-    }
+    // Every conquered boss chamber earns a Legendary boon from the gods —
+    // queued, so it never stacks on top of a same-frame level-up panel
+    this.pendingLegendaries++;
+    this.maybeOpenLegendary();
   }
 
   continueEndless(): void {
@@ -1437,6 +1544,8 @@ export class Game {
     this.setOverlayOpen(false);
     this.ui.showToast('THE DESCENT CONTINUES', '#c17bff');
     this.beginTransition();
+    // The Archon's owed legend (and any other queued reward) is claimed here
+    this.maybeOpenLegendary();
   }
 
   finishToMenu(): void {
@@ -1721,6 +1830,25 @@ export class Game {
         color: LEGENDARY_COLOR, godLabel: GOD_NAME[def.god],
       });
     }
+    if (out.length > 0) return out;
+    // Every legend claimed (deep endless runs): offer ASCENSION — the owned
+    // legendaries deepen a level instead, up to level 4.
+    const ascendable = this.boons.filter((b) => {
+      const def = boonDef(b.id);
+      return def.legendary && (b.level ?? 1) < 4;
+    });
+    const shuffled = [...ascendable];
+    while (out.length < 3 && shuffled.length > 0) {
+      const owned = shuffled.splice(Math.floor(rand(shuffled.length)), 1)[0];
+      const def = boonDef(owned.id);
+      const next = (owned.level ?? 1) + 1;
+      out.push({
+        id: def.id, rarity: 'legendary',
+        name: `${def.name} · ASCENSION ${next}`,
+        desc: `Its power deepens: the effect intensifies and you gain +10% Might.`,
+        color: LEGENDARY_COLOR, godLabel: GOD_NAME[def.god],
+      });
+    }
     return out;
   }
 
@@ -1728,10 +1856,16 @@ export class Game {
     if (c.id === '__gold') {
       this.addGold(80);
     } else {
-      this.boons.push({
-        id: c.id,
-        rarity: c.rarity === 'duo' || c.rarity === 'legendary' ? 'epic' : c.rarity,
-      });
+      const existing = this.boons.find((b) => b.id === c.id);
+      if (existing && boonDef(c.id).legendary) {
+        // Ascension: taking an owned legendary again deepens it a level
+        existing.level = (existing.level ?? 1) + 1;
+      } else {
+        this.boons.push({
+          id: c.id,
+          rarity: c.rarity === 'duo' || c.rarity === 'legendary' ? 'epic' : c.rarity,
+        });
+      }
       this.recomputeStats();
     }
     this.audio.play('boon');
@@ -1802,15 +1936,22 @@ export class Game {
     this.chamberT += dt;
     if (this.bannerT > 0) this.bannerT -= dt;
 
+    // Claim the Awakening stash whenever the player is ready
+    if (this.bankedLevelUps > 0 && this.input.pressed('KeyL')) {
+      this.claimBankedLevelUps();
+    }
+
     // Frenzy decay when not killing (Rage Incarnate never lets go)
     this.frenzyIdleT += dt;
     if (this.frenzyIdleT > 2 && this.frenzyStacks > 0 && !this.mods.frenzyNoDecay) {
       this.frenzyStacks = Math.max(0, this.frenzyStacks - dt * 6);
     }
 
-    // Massacre chain lapses if you stop killing — stay in the fray to keep it
+    // Massacre chain lapses if you stop killing — stay in the fray to keep
+    // it. The chain dies with the chamber: no lingering over the door screen.
     if (this.massacreT > 0) {
       this.massacreT -= dt;
+      if (this.phase !== 'combat') this.massacreT = 0;
       if (this.massacreT <= 0) this.massacreCount = 0;
     }
 
@@ -1897,6 +2038,21 @@ export class Game {
       s.life -= dt;
       s.r += (s.maxR - s.r) * 10 * dt;
       if (s.life <= 0) this.shockwaves.splice(i, 1);
+    }
+    for (let i = this.shockRings.length - 1; i >= 0; i--) {
+      const s = this.shockRings[i];
+      s.r += s.speed * dt;
+      if (!s.resolved) {
+        const p = this.player;
+        const d = Math.hypot(p.x - s.x, p.y - s.y);
+        // Contact is decided the first frame the ring's band reaches the player.
+        if (Math.abs(d - s.r) <= s.thickness / 2 + 16) {
+          // Dashing or otherwise invulnerable = a clean pass through the wave.
+          if (p.invulnT <= 0 && p.dashT <= 0) this.hurtPlayer(s.damage, s.x, s.y);
+          s.resolved = true;
+        }
+      }
+      if (s.r >= s.maxR) this.shockRings.splice(i, 1);
     }
     for (let i = this.telegraphs.length - 1; i >= 0; i--) {
       this.telegraphs[i].t -= dt;
