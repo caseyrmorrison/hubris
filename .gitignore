@@ -4,3 +4,8 @@ apple/HUBRIS/web/
 .DS_Store
 *.xcuserdatad/
 xcuserdata/
+
+# Local agent/editor tooling (skill scaffolding), not game code
+.claude/skills/
+.github/skills/
+.github/hooks/
