@@ -843,6 +843,9 @@ export const STORM_DAMAGE = 40;     // per-bolt base (runs through damage bracke
 // Diablo-style kill chain: each kill refreshes a short window; the more you
 // stack, the bigger the XP multiplier. Let it lapse and the chain resets.
 // Deliberately modest — a small edge over base leveling, not a runaway.
+// Standing-order payout when a fully-maxed build levels up on Ichor
+export const AUTO_LEVEL_ICHOR = 2;
+
 export const MASSACRE_WINDOW = 2.2;  // seconds a kill keeps the chain alive
 export const MASSACRE_PER_KILL = 0.007; // +0.7% XP per chained kill...
 export const MASSACRE_MAX = 0.4;     // ...capped at +40% XP (1.4x total)

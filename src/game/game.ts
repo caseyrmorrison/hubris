@@ -10,7 +10,7 @@ import { Particles } from '../engine/particles';
 import { SpatialHash } from '../engine/spatial';
 import { choice, clamp, fmt, rand, randInt, TAU, weightedPick } from '../engine/math';
 import {
-  BOON_DEFS, BOSSES, CHAMBER_COUNT, CHAOS_MODS, CHARACTERS, ENEMY_DEFS,
+  AUTO_LEVEL_ICHOR, BOON_DEFS, BOSSES, CHAMBER_COUNT, CHAOS_MODS, CHARACTERS, ENEMY_DEFS,
   FATE_COLOR, MANA_SHIELD, MASSACRE_MAX, MASSACRE_PER_KILL, MASSACRE_WINDOW,
   STORM_DAMAGE, STORM_INTERVAL, TOME_DEFS, TOME_MAX_LEVEL, TOWER_DEFS,
   WEAPON_DEFS, WEAPON_MAX_LEVEL, LEGENDARY_COLOR, biomeIndex, boonDef, bossHPFor,
@@ -102,7 +102,7 @@ export interface PlayerState {
 }
 
 export interface LevelChoice {
-  kind: 'weapon' | 'tome' | 'gold';
+  kind: 'weapon' | 'tome' | 'gold' | 'auto_gold' | 'auto_ichor';
   id: string;
   toLevel: number;
   amount: number;
@@ -190,6 +190,9 @@ export class Game {
   pendingLevelUps = 0;
   bankedLevelUps = 0; // Awakening head-start: claim with L, or on first natural level-up
   pendingLegendaries = 0; // boss rewards queue behind whatever overlay is up
+  // Standing order for fully-maxed builds: level-ups auto-pay this reward
+  // with a toast instead of interrupting with the (pointless) choice screen.
+  autoLevelReward: 'gold' | 'ichor' | null = null;
   weapons: OwnedWeapon[] = [];
   tomes: Record<string, number> = {};
   boons: OwnedBoon[] = [];
@@ -520,6 +523,7 @@ export class Game {
     this.pendingLevelUps = 0;
     this.bankedLevelUps = 0;
     this.pendingLegendaries = 0;
+    this.autoLevelReward = null;
     this.weapons = [];
     this.tomes = {};
     this.boons = [];
@@ -1031,8 +1035,24 @@ export class Game {
   }
 
   maybeOpenLevelUp(): void {
-    if (this.pendingLevelUps > 0 && !this.overlayOpen && this.state === 'run'
-      && this.phase !== 'over' && this.deathT <= 0) {
+    if (this.pendingLevelUps <= 0 || this.state !== 'run'
+      || this.phase === 'over' || this.deathT > 0) return;
+    // Standing order (maxed build): pay out every pending level instantly —
+    // no screen, no interruption. Re-checks maxed-ness so a mid-run weapon
+    // unlock brings the real choices back.
+    if (this.autoLevelReward !== null && this.buildFullyMaxed()) {
+      let gold = 0, ichor = 0;
+      while (this.pendingLevelUps > 0) {
+        this.pendingLevelUps--;
+        if (this.autoLevelReward === 'gold') gold += this.autoLevelGold();
+        else ichor += AUTO_LEVEL_ICHOR;
+      }
+      if (gold > 0) { this.addGold(gold); this.ui.showToast(`LV ${this.level} — +${gold} gold`, '#f0c75e'); }
+      if (ichor > 0) { this.addIchor(ichor); this.ui.showToast(`LV ${this.level} — +${ichor} Ichor`, '#e05780'); }
+      this.audio.play('ui');
+      return;
+    }
+    if (!this.overlayOpen) {
       this.audio.play('levelup');
       this.ui.openLevelUp();
     }
@@ -1722,8 +1742,32 @@ export class Game {
       weights.splice(i, 1);
       out.push(pick);
     }
+    // Everything maxed: the full level-up screen (n >= 3) offers a one-time
+    // cut plus two STANDING ORDERS that silence the screen for good. Silent
+    // single-draw callers (forge, chests) never see the standing orders —
+    // they'd set the preference without the player choosing it.
+    if (out.length === 0 && n >= 3 && this.autoLevelReward === null) {
+      const amt = this.autoLevelGold();
+      return [
+        {
+          kind: 'gold', id: 'gold', toLevel: 0, amount: amt,
+          name: 'Charon’s Cut', desc: `Take ${amt} gold, just this once.`,
+          icon: '◈', color: '#f0c75e', tag: '',
+        },
+        {
+          kind: 'auto_gold', id: 'auto_gold', toLevel: 0, amount: amt,
+          name: 'Charon’s Ledger', desc: `ALWAYS take gold (${amt}, scaling) — level-ups stop interrupting.`,
+          icon: '◈', color: '#ffd166', tag: 'STANDING ORDER',
+        },
+        {
+          kind: 'auto_ichor', id: 'auto_ichor', toLevel: 0, amount: AUTO_LEVEL_ICHOR,
+          name: 'Tithe of Ichor', desc: `ALWAYS take ${AUTO_LEVEL_ICHOR} Ichor — level-ups stop interrupting.`,
+          icon: '⬥', color: '#e05780', tag: 'STANDING ORDER',
+        },
+      ];
+    }
     while (out.length < n) {
-      const amt = 40 + this.chamber * 10;
+      const amt = this.autoLevelGold();
       out.push({
         kind: 'gold', id: 'gold', toLevel: 0, amount: amt,
         name: 'Charon’s Cut', desc: `Everything is maxed. Take ${amt} gold.`,
@@ -1731,6 +1775,25 @@ export class Game {
       });
     }
     return out;
+  }
+
+  /** Gold paid per level once the build is maxed (scales with depth). */
+  private autoLevelGold(): number {
+    return 40 + this.chamber * 10;
+  }
+
+  /** True when level-ups have nothing left to offer (weapons & tomes maxed). */
+  buildFullyMaxed(): boolean {
+    for (const def of WEAPON_DEFS) {
+      if (!weaponUnlocked(def, this.save)) continue;
+      const owned = this.weapons.find((w) => w.id === def.id);
+      if (owned && owned.level < WEAPON_MAX_LEVEL) return false;
+      if (!owned && this.weapons.length < 5) return false;
+    }
+    for (const def of TOME_DEFS) {
+      if ((this.tomes[def.id] ?? 0) < TOME_MAX_LEVEL) return false;
+    }
+    return true;
   }
 
   applyLevelChoice(c: LevelChoice): void {
@@ -1745,6 +1808,12 @@ export class Game {
       }
     } else if (c.kind === 'tome') {
       this.tomes[c.id] = c.toLevel;
+    } else if (c.kind === 'auto_gold' || c.kind === 'auto_ichor') {
+      // Standing order placed: pay this level now; future level-ups pay
+      // silently (see maybeOpenLevelUp) and never open the screen again.
+      this.autoLevelReward = c.kind === 'auto_gold' ? 'gold' : 'ichor';
+      if (this.autoLevelReward === 'gold') this.addGold(c.amount);
+      else this.addIchor(c.amount);
     } else {
       this.addGold(c.amount);
     }

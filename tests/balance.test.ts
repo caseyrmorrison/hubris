@@ -4,7 +4,10 @@
 // ---------------------------------------------------------------------------
 import { describe, expect, it } from 'vitest';
 import { createHeadlessGame, grantStrongBuild, runBot, stepFrames } from '../src/testkit';
-import { MASSACRE_WINDOW as MASSACRE_WINDOW_S, WEAPON_DEFS, boonDef, isBossChamber, pillarCountRange, weaponUnlocked } from '../src/game/data';
+import {
+  MASSACRE_WINDOW as MASSACRE_WINDOW_S, TOME_DEFS, TOME_MAX_LEVEL, WEAPON_DEFS,
+  WEAPON_MAX_LEVEL, boonDef, isBossChamber, pillarCountRange, weaponUnlocked,
+} from '../src/game/data';
 import { defaultSave } from '../src/game/meta';
 
 describe('bracket damage math', () => {
@@ -668,6 +671,45 @@ describe('expanded mirror of hubris', () => {
     g.continueEndless();                               // ...and claimed on continue
     expect(g.pendingLegendaries).toBe(0);
     expect(g.boons.length).toBe(boons0 + 1);
+  });
+
+  it('a maxed build offers standing orders; picking one silences level-ups for good', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    // Max everything: 5 weapons at max level, every tome at max rank
+    const unlocked = WEAPON_DEFS.filter((w) => weaponUnlocked(w, g.save));
+    g.weapons = unlocked.slice(0, 5).map((w) => ({ id: w.id, level: WEAPON_MAX_LEVEL, t: 0, angle: 0, trailT: 0 }));
+    for (const t of TOME_DEFS) g.tomes[t.id] = TOME_MAX_LEVEL;
+    expect(g.buildFullyMaxed()).toBe(true);
+    // The full screen offers: one-time gold + the two standing orders
+    const cs = g.genLevelChoices(3);
+    expect(cs.map((c) => c.kind).sort()).toEqual(['auto_gold', 'auto_ichor', 'gold']);
+    // Place the Ichor standing order — pays this level immediately
+    const ichor0 = g.save.ichor + g.ichorRun;
+    g.applyLevelChoice(cs.find((c) => c.kind === 'auto_ichor')!);
+    expect(g.autoLevelReward).toBe('ichor');
+    expect(g.save.ichor + g.ichorRun).toBe(ichor0 + 2);
+    // Every later level-up pays out silently — the screen never opens
+    let opened = 0;
+    g.ui.openLevelUp = () => { opened++; };
+    g.gainXP(g.xpNeeded * 3 + 5);
+    expect(g.pendingLevelUps).toBe(0);
+    expect(opened).toBe(0);
+    expect(g.save.ichor + g.ichorRun).toBeGreaterThan(ichor0 + 2);
+  });
+
+  it('silent single-draw rewards (forge/chest paths) never place a standing order', () => {
+    const { g } = createHeadlessGame();
+    g.startRun();
+    const unlocked = WEAPON_DEFS.filter((w) => weaponUnlocked(w, g.save));
+    g.weapons = unlocked.slice(0, 5).map((w) => ({ id: w.id, level: WEAPON_MAX_LEVEL, t: 0, angle: 0, trailT: 0 }));
+    for (const t of TOME_DEFS) g.tomes[t.id] = TOME_MAX_LEVEL;
+    // n=1 draws (chest/forge auto-rewards) get plain gold, not standing orders
+    const one = g.genLevelChoices(1);
+    expect(one.length).toBe(1);
+    expect(one[0].kind).toBe('gold');
+    g.applyLevelChoice(one[0]);
+    expect(g.autoLevelReward).toBeNull();
   });
 
   it('dev mode hooks: god mode blocks all damage, devMods stack into stats', () => {

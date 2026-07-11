@@ -711,13 +711,16 @@ export class UIManager {
     this.g.audio.play('ui');
     this.g.applyLevelChoice(c);
     this.g.pendingLevelUps--;
-    if (this.g.pendingLevelUps > 0) {
+    // A standing order just placed pays out the rest silently — don't
+    // re-show the screen it exists to silence.
+    if (this.g.pendingLevelUps > 0 && this.g.autoLevelReward === null) {
       this.currentChoices = this.g.genLevelChoices(3);
       this.renderLevelUp();
     } else {
       this.levelup.classList.remove('visible');
       this.setMode('none');
       this.g.maybeOpenLegendary(); // a boss reward may be waiting its turn
+      this.g.maybeOpenLevelUp();   // drains leftovers via the standing order
     }
     this.refreshBuild();
   }
