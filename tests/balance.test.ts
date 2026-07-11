@@ -732,6 +732,79 @@ describe('expanded mirror of hubris', () => {
     expect(g.autoLevelReward).toBeNull();
   });
 
+  it('every weapon has complete 7-level tables and honest descriptions', () => {
+    for (const def of WEAPON_DEFS) {
+      for (let l = 1; l <= 7; l++) {
+        const d = def.describe(l);
+        expect(d).toBeTruthy();
+        expect(d).not.toContain('undefined');
+        expect(d).not.toContain('NaN');
+      }
+    }
+    expect(WEAPON_DEFS.length).toBe(20);
+  });
+
+  it("legendary weapons demand long roads; Olympus' Verdict needs all three champions", () => {
+    const save = defaultSave();
+    const defs = Object.fromEntries(WEAPON_DEFS.map((d) => [d.id, d]));
+    expect(weaponUnlocked(defs.cataclysm, save)).toBe(false);
+    expect(weaponUnlocked(defs.verdict, save)).toBe(false);
+    expect(weaponUnlocked(defs.ouroboros, save)).toBe(false);
+    // Verdict: one win per champion — two is not enough
+    save.charStats = {
+      warrior: { runs: 5, wins: 1, kills: 0, bestChamber: 20 },
+      archer: { runs: 5, wins: 2, kills: 0, bestChamber: 20 },
+    };
+    expect(defs.verdict.unlock!.progress(save)).toEqual([2, 3]);
+    expect(weaponUnlocked(defs.verdict, save)).toBe(false);
+    save.charStats.mage = { runs: 1, wins: 1, kills: 0, bestChamber: 20 };
+    expect(weaponUnlocked(defs.verdict, save)).toBe(true);
+    // The other two: 25k kills / chamber 30
+    save.kills = 25000;
+    expect(weaponUnlocked(defs.cataclysm, save)).toBe(true);
+    save.bestChamber = 30;
+    expect(weaponUnlocked(defs.ouroboros, save)).toBe(true);
+  });
+
+  it('new weapon behaviors: frost chills, siphon heals, verdict executes the mightiest', () => {
+    const { g, input } = createHeadlessGame();
+    g.startRun();
+    g.setupChamber(3);
+    g.phase = 'combat';
+    g.quota = 1e9;
+    g.enemies = [];
+    g.stats.critChance = 0;
+
+    // Boreal Ring chills everything in the nova
+    g.weapons = [{ id: 'frost', level: 1, t: 0.01, angle: 0, trailT: 0 }];
+    const near = g.spawnEnemyAt({ x: g.player.x + 80, y: g.player.y }, false, 'brute');
+    near.spawnT = 0;
+    stepFrames(g, input, 5);
+    expect(near.chillT).toBeGreaterThan(0);
+    expect(near.hp).toBeLessThan(near.maxHP);
+
+    // Soul Siphon drains and heals
+    g.enemies = [];
+    g.weapons = [{ id: 'siphon', level: 3, t: 0.01, angle: 0, trailT: 0 }];
+    const prey = g.spawnEnemyAt({ x: g.player.x + 120, y: g.player.y }, false, 'brute');
+    prey.spawnT = 0;
+    g.player.hp = 50;
+    stepFrames(g, input, 5);
+    expect(prey.hp).toBeLessThan(prey.maxHP);
+    expect(g.player.hp).toBeGreaterThan(50);
+
+    // Olympus' Verdict strikes the HEALTHIEST foe, not the nearest
+    g.enemies = [];
+    g.weapons = [{ id: 'verdict', level: 1, t: 0.01, angle: 0, trailT: 0 }];
+    const weak = g.spawnEnemyAt({ x: g.player.x + 60, y: g.player.y }, false, 'shade');
+    const mighty = g.spawnEnemyAt({ x: g.player.x + 600, y: g.player.y }, false, 'juggernaut');
+    weak.spawnT = 0; mighty.spawnT = 0;
+    const weakHP = weak.hp;
+    stepFrames(g, input, 5);
+    expect(mighty.hp).toBeLessThan(mighty.maxHP); // executed
+    expect(weak.hp).toBe(weakHP);                 // spared (out of splash)
+  });
+
   it('late-run enemies: hexer casts seekers, blinker teleports, juggernaut resists knockback', () => {
     const { g, input } = createHeadlessGame();
     g.startRun();

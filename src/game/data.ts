@@ -198,6 +198,66 @@ export const HAMMER = {
   reach: 120,
   knockback: 320,
 };
+export const FROST = {
+  damage: [12, 16, 20, 26, 32, 40, 58],
+  interval: [3.4, 3.2, 3.0, 2.8, 2.6, 2.4, 2.0],
+  radius: [120, 132, 144, 156, 168, 180, 200],
+  chill: [1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 3.0],
+};
+export const FANGS = {
+  damage: [16, 21, 27, 34, 42, 52, 74],
+  interval: [1.6, 1.5, 1.4, 1.3, 1.2, 1.05, 0.9],
+  speed: 520,
+};
+export const CENSER = {
+  dps: [8, 11, 14, 18, 22, 27, 38],
+  patchRadius: [30, 33, 36, 39, 42, 45, 52],
+  orbitRadius: 95,
+  orbitSpeed: 1.6,
+  emitEvery: 0.35,
+  patchLife: 1.6,
+};
+export const MAELSTROM = {
+  damage: [14, 18, 23, 29, 36, 44, 62],
+  interval: [3.2, 3.0, 2.8, 2.6, 2.4, 2.2, 1.9],
+  radius: [200, 215, 230, 245, 260, 275, 305],
+  pull: 260,
+};
+export const BREATH = {
+  damage: [22, 28, 36, 45, 55, 68, 96],
+  interval: [2.4, 2.25, 2.1, 1.95, 1.8, 1.6, 1.4],
+  range: [230, 245, 260, 275, 290, 305, 340],
+  arc: 0.55,
+};
+export const SIPHON = {
+  damage: [18, 24, 31, 39, 48, 59, 84],
+  interval: [2.8, 2.6, 2.4, 2.2, 2.0, 1.8, 1.5],
+  heal: [1, 1, 2, 2, 3, 4, 6],
+  range: 320,
+};
+// --- Legendary arsenal: monstrous power, monstrous unlock roads ---
+export const CATACLYSM = {
+  damage: [30, 39, 50, 63, 78, 95, 130],
+  interval: [5.0, 4.7, 4.4, 4.1, 3.8, 3.5, 3.0],
+  radius: 780,
+  chill: 0.8,
+};
+export const VERDICT = {
+  damage: [90, 115, 145, 185, 235, 300, 430],
+  interval: [6.0, 5.5, 5.0, 4.6, 4.2, 3.8, 3.2],
+  hpFrac: 0.06,       // bonus vs big targets...
+  hpFracCap: 350,     // ...capped so bosses don't evaporate
+  splashRadius: 90,
+  splashFrac: 0.5,
+};
+export const OUROBOROS = {
+  damage: [26, 33, 42, 53, 65, 79, 108],
+  orbitRadius: [150, 158, 166, 174, 182, 190, 212],
+  orbitSpeed: 1.9,
+  hitCooldown: 0.5,
+  chill: 1.2,
+  headRadius: 26,
+};
 
 export const WEAPON_DEFS: WeaponDef[] = [
   {
@@ -259,6 +319,82 @@ export const WEAPON_DEFS: WeaponDef[] = [
       progress: (s) => [Math.min(s.runs, 10), 10],
     },
     describe: (l) => `Slams the ground ahead every ${HAMMER.interval[l - 1]}s: ${HAMMER.damage[l - 1]} dmg and a mighty shove.`,
+  },
+  {
+    id: 'frost', name: 'Boreal Ring', color: '#a8e6ff', icon: '❄',
+    unlock: {
+      desc: 'Reach chamber 8',
+      progress: (s) => [Math.min(s.bestChamber, 8), 8],
+    },
+    describe: (l) => `Icy nova every ${FROST.interval[l - 1]}s: ${FROST.damage[l - 1]} dmg in ${FROST.radius[l - 1]}px, Chills for ${FROST.chill[l - 1]}s.`,
+  },
+  {
+    id: 'fangs', name: 'Twin Fangs', color: '#e8e4d8', icon: '⋔',
+    unlock: {
+      desc: 'Slay 5,000 lifetime foes',
+      progress: (s) => [Math.min(s.kills, 5000), 5000],
+    },
+    describe: (l) => `Every ${FANGS.interval[l - 1]}s, blades (${FANGS.damage[l - 1]} dmg) lash out to both flanks.`,
+  },
+  {
+    id: 'censer', name: 'Sunburst Censer', color: '#ffb347', icon: '☀',
+    unlock: {
+      desc: 'Deal 150,000 lifetime damage',
+      progress: (s) => [Math.min(s.totalDamage, 150000), 150000],
+    },
+    describe: (l) => `A blazing censer orbits you, scorching the ground for ${CENSER.dps[l - 1]} dmg/s.`,
+  },
+  {
+    id: 'maelstrom', name: 'Maelstrom', color: '#5cc8ff', icon: '↻',
+    unlock: {
+      desc: 'Complete 25 runs',
+      progress: (s) => [Math.min(s.runs, 25), 25],
+    },
+    describe: (l) => `Every ${MAELSTROM.interval[l - 1]}s, drags foes within ${MAELSTROM.radius[l - 1]}px toward you (${MAELSTROM.damage[l - 1]} dmg).`,
+  },
+  {
+    id: 'breath', name: "Dragon's Breath", color: '#ff6b35', icon: '☲',
+    unlock: {
+      desc: 'Escape the underworld 3 times',
+      progress: (s) => [Math.min(s.wins, 3), 3],
+    },
+    describe: (l) => `Every ${BREATH.interval[l - 1]}s, a fire cone sears foes ahead for ${BREATH.damage[l - 1]} dmg.`,
+  },
+  {
+    id: 'siphon', name: 'Soul Siphon', color: '#3ddc97', icon: '⚚',
+    unlock: {
+      desc: 'Reach chamber 15',
+      progress: (s) => [Math.min(s.bestChamber, 15), 15],
+    },
+    describe: (l) => `Every ${SIPHON.interval[l - 1]}s, drains the nearest foe: ${SIPHON.damage[l - 1]} dmg, restores ${SIPHON.heal[l - 1]} HP.`,
+  },
+  // --- LEGENDARY ARSENAL: worth the long road ---
+  {
+    id: 'cataclysm', name: 'Cataclysm', color: '#ff2d55', icon: '✸',
+    unlock: {
+      desc: 'LEGENDARY — Slay 25,000 lifetime foes',
+      progress: (s) => [Math.min(s.kills, 25000), 25000],
+    },
+    describe: (l) => `Every ${CATACLYSM.interval[l - 1]}s the arena quakes: ${CATACLYSM.damage[l - 1]} dmg to EVERYTHING near, Chilled.`,
+  },
+  {
+    id: 'verdict', name: "Olympus' Verdict", color: '#fff1a8', icon: '⚖',
+    unlock: {
+      desc: 'LEGENDARY — Escape with all three champions',
+      progress: (s) => {
+        const won = ['warrior', 'archer', 'mage'].filter((id) => (s.charStats[id]?.wins ?? 0) > 0).length;
+        return [won, 3];
+      },
+    },
+    describe: (l) => `Every ${VERDICT.interval[l - 1]}s a divine pillar executes the mightiest foe: ${VERDICT.damage[l - 1]} dmg + ${Math.round(VERDICT.hpFrac * 100)}% of its max HP.`,
+  },
+  {
+    id: 'ouroboros', name: 'Ouroboros', color: '#00e5a0', icon: '∞',
+    unlock: {
+      desc: 'LEGENDARY — Reach chamber 30 in the endless descent',
+      progress: (s) => [Math.min(s.bestChamber, 30), 30],
+    },
+    describe: (l) => `The world-serpent circles you at ${OUROBOROS.orbitRadius[l - 1]}px: ${OUROBOROS.damage[l - 1]} dmg, Chills all it touches.`,
   },
 ];
 

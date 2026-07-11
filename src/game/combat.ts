@@ -5,9 +5,10 @@
 import { angleDiff, clamp, rand, TAU } from '../engine/math';
 import type { Game } from './game';
 import {
-  AEGIS, ARROW, BOSSES, CHAKRAM, CINDERPATH, COMET, DARTS, HAMMER, LASH,
-  MIRRORB, ORB, PULSE, SPEAR, TOWER_CAPTURE_RADIUS, TOWER_CHANNEL_TIME,
-  TOWER_DECAY_RATE, TRAPDEF, aliveTarget, isBossChamber,
+  AEGIS, ARROW, BOSSES, BREATH, CATACLYSM, CENSER, CHAKRAM, CINDERPATH, COMET,
+  DARTS, FANGS, FROST, HAMMER, LASH, MAELSTROM, MIRRORB, ORB, OUROBOROS, PULSE,
+  SIPHON, SPEAR, TOWER_CAPTURE_RADIUS, TOWER_CHANNEL_TIME,
+  TOWER_DECAY_RATE, TRAPDEF, VERDICT, aliveTarget, isBossChamber,
 } from './data';
 import type { BossVariant, Enemy, Projectile } from './types';
 
@@ -626,6 +627,188 @@ function updateWeapons(g: Game, dt: number): void {
               ky: ((e.y - hy) / Math.max(10, d)) * HAMMER.knockback,
             });
           }
+        }
+        break;
+      }
+      case 'frost': {
+        w.t -= dt;
+        if (w.t <= 0) {
+          w.t = FROST.interval[li] / atk;
+          const r = FROST.radius[li] * (1 + g.stats.area);
+          g.shockwaves.push({ x: p.x, y: p.y, r: 12, maxR: r, life: 0.4, color: '#a8e6ff' });
+          g.audio.play('nova');
+          g.hash.query(p.x, p.y, r + 30, Q);
+          for (const e of Q) {
+            const d = Math.hypot(e.x - p.x, e.y - p.y);
+            if (d > r + e.radius) continue;
+            e.chillT = Math.max(e.chillT, FROST.chill[li]);
+            g.dealDamage(e, FROST.damage[li], { source: 'auto' });
+          }
+        }
+        break;
+      }
+      case 'fangs': {
+        w.t -= dt;
+        if (w.t <= 0) {
+          w.t = FANGS.interval[li] / atk;
+          const n = 2 + g.stats.projectiles;
+          for (let i = 0; i < n; i++) {
+            // Alternate flanks: +90°, -90°, then rear quarters for extras
+            const off = [Math.PI / 2, -Math.PI / 2, Math.PI * 0.75, -Math.PI * 0.75, Math.PI][i % 5];
+            const a = p.aim + off;
+            g.projectiles.push(makeProj('mirror', p.x, p.y,
+              Math.cos(a) * FANGS.speed, Math.sin(a) * FANGS.speed,
+              9, FANGS.damage[li], true, 1 + g.stats.pierce, 0));
+          }
+        }
+        break;
+      }
+      case 'censer': {
+        w.angle += CENSER.orbitSpeed * atk * dt;
+        const cx = p.x + Math.cos(w.angle) * CENSER.orbitRadius;
+        const cy = p.y + Math.sin(w.angle) * CENSER.orbitRadius;
+        w.trailT -= dt;
+        if (w.trailT <= 0) {
+          w.trailT = CENSER.emitEvery;
+          if (g.patches.length > 130) g.patches.shift();
+          g.patches.push({
+            x: cx, y: cy,
+            radius: CENSER.patchRadius[li] * (1 + g.stats.area), life: CENSER.patchLife,
+            dps: CENSER.dps[li], hostile: false, seed: rand(TAU),
+          });
+        }
+        break;
+      }
+      case 'maelstrom': {
+        w.t -= dt;
+        if (w.t <= 0) {
+          w.t = MAELSTROM.interval[li] / atk;
+          const r = MAELSTROM.radius[li] * (1 + g.stats.area);
+          g.shockwaves.push({ x: p.x, y: p.y, r: r, maxR: r * 0.2, life: 0.4, color: '#5cc8ff' });
+          g.audio.play('nova');
+          g.hash.query(p.x, p.y, r + 30, Q);
+          for (const e of Q) {
+            const d = Math.hypot(e.x - p.x, e.y - p.y);
+            if (d > r + e.radius) continue;
+            // Knockback INWARD — feeds novas, traps, and the strike arc
+            g.dealDamage(e, MAELSTROM.damage[li], {
+              source: 'auto',
+              kx: ((p.x - e.x) / Math.max(10, d)) * MAELSTROM.pull,
+              ky: ((p.y - e.y) / Math.max(10, d)) * MAELSTROM.pull,
+            });
+          }
+        }
+        break;
+      }
+      case 'breath': {
+        w.t -= dt;
+        if (w.t <= 0) {
+          w.t = BREATH.interval[li] / atk;
+          const R = BREATH.range[li] * (1 + g.stats.range);
+          for (let i = 0; i < 10; i++) {
+            const a = p.aim + rand(-BREATH.arc, BREATH.arc) * 0.8;
+            const d = rand(40, R);
+            g.particles.burst(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, '#ff6b35', 2,
+              { speed: 60, size: 5, life: 0.35 });
+          }
+          g.audio.play('nova');
+          g.hash.query(p.x, p.y, R + 40, Q);
+          for (const e of Q) {
+            const d = Math.hypot(e.x - p.x, e.y - p.y);
+            if (d > R + e.radius) continue;
+            if (Math.abs(angleDiff(p.aim, Math.atan2(e.y - p.y, e.x - p.x))) > BREATH.arc) continue;
+            g.dealDamage(e, BREATH.damage[li], { source: 'auto' });
+          }
+        }
+        break;
+      }
+      case 'siphon': {
+        w.t -= dt;
+        if (w.t <= 0) {
+          const targets = nearestEnemies(g, p.x, p.y, SIPHON.range * (1 + g.stats.range), 1);
+          if (targets.length === 0) {
+            w.t = 0.25;
+          } else {
+            w.t = SIPHON.interval[li] / atk;
+            const tgt = targets[0];
+            g.lightning.push({ x1: tgt.x, y1: tgt.y, x2: p.x, y2: p.y, life: 0.22, color: '#3ddc97' });
+            g.dealDamage(tgt, SIPHON.damage[li], { source: 'auto' });
+            g.player.hp = Math.min(g.stats.maxHP, g.player.hp + SIPHON.heal[li]);
+          }
+        }
+        break;
+      }
+      case 'cataclysm': {
+        w.t -= dt;
+        if (w.t <= 0) {
+          w.t = CATACLYSM.interval[li] / atk;
+          const r = CATACLYSM.radius * (1 + g.stats.area);
+          g.cam.shake(9);
+          g.audio.play('slam');
+          g.shockwaves.push({ x: p.x, y: p.y, r: 30, maxR: r, life: 0.6, color: '#ff2d55' });
+          for (const e of g.enemies) {
+            if (e.hp <= 0 || e.spawnT > 0) continue;
+            if ((e.x - p.x) ** 2 + (e.y - p.y) ** 2 > r * r) continue;
+            e.chillT = Math.max(e.chillT, CATACLYSM.chill);
+            g.dealDamage(e, CATACLYSM.damage[li], { source: 'auto' });
+          }
+        }
+        break;
+      }
+      case 'verdict': {
+        w.t -= dt;
+        if (w.t <= 0) {
+          // The pillar seeks the mightiest foe standing — bosses included
+          let tgt: Enemy | null = null;
+          for (const e of g.enemies) {
+            if (e.hp <= 0 || e.spawnT > 0) continue;
+            if (!tgt || e.hp > tgt.hp) tgt = e;
+          }
+          if (!tgt) {
+            w.t = 0.3;
+          } else {
+            w.t = VERDICT.interval[li] / atk;
+            const dmg = VERDICT.damage[li]
+              + Math.min(VERDICT.hpFracCap, tgt.maxHP * VERDICT.hpFrac);
+            g.lightning.push({ x1: tgt.x, y1: tgt.y - 320, x2: tgt.x, y2: tgt.y, life: 0.28, color: '#fff1a8' });
+            g.particles.burst(tgt.x, tgt.y, '#fff1a8', 26, { speed: 300, size: 7, life: 0.6 });
+            g.shockwaves.push({ x: tgt.x, y: tgt.y, r: 8, maxR: VERDICT.splashRadius * (1 + g.stats.area), life: 0.3, color: '#fff1a8' });
+            g.audio.play('bolt');
+            g.cam.shake(5);
+            g.dealDamage(tgt, dmg, { source: 'bolt' });
+            const sr = VERDICT.splashRadius * (1 + g.stats.area);
+            g.hash.query(tgt.x, tgt.y, sr + 30, Q);
+            for (const e of Q) {
+              if (e === tgt) continue;
+              if ((e.x - tgt.x) ** 2 + (e.y - tgt.y) ** 2 > (sr + e.radius) ** 2) continue;
+              g.dealDamage(e, VERDICT.damage[li] * VERDICT.splashFrac, { source: 'bolt' });
+            }
+          }
+        }
+        break;
+      }
+      case 'ouroboros': {
+        w.angle += OUROBOROS.orbitSpeed * atk * dt;
+        const orbitR = OUROBOROS.orbitRadius[li] * (1 + g.stats.area);
+        const hx = p.x + Math.cos(w.angle) * orbitR;
+        const hy = p.y + Math.sin(w.angle) * orbitR;
+        // Serpent body shimmer
+        w.trailT -= dt;
+        if (w.trailT <= 0) {
+          w.trailT = 0.05;
+          g.particles.burst(hx, hy, '#00e5a0', 1, { speed: 30, size: 5, life: 0.5 });
+        }
+        g.hash.query(hx, hy, OUROBOROS.headRadius + 30, Q);
+        for (const e of Q) {
+          if ((e.x - hx) ** 2 + (e.y - hy) ** 2 > (OUROBOROS.headRadius + e.radius) ** 2) continue;
+          if ((e.hitCd['ou'] ?? 0) > g.runT) continue;
+          e.hitCd['ou'] = g.runT + OUROBOROS.hitCooldown;
+          e.chillT = Math.max(e.chillT, OUROBOROS.chill);
+          const d = Math.max(10, Math.hypot(e.x - p.x, e.y - p.y));
+          g.dealDamage(e, OUROBOROS.damage[li], {
+            source: 'auto',
+            kx: ((e.x - p.x) / d) * 220, ky: ((e.y - p.y) / d) * 220,
+          });
         }
         break;
       }
